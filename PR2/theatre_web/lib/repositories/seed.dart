@@ -1,8 +1,11 @@
+import '../models/actor.dart';
+import '../models/genre.dart';
 import '../models/show.dart';
+import '../models/spectator.dart';
 import '../models/theatre.dart';
 
-/// Начальный набор данных. При перезагрузке страницы всё
-/// восстанавливается отсюда.
+/// Начальные данные. Пишутся в localStorage при первом запуске,
+/// а ещё если сохранённые данные побились или устарели.
 
 const seedTheatres = [
   Theatre(
@@ -87,6 +90,205 @@ const seedTheatres = [
   ),
 ];
 
+const seedGenres = [
+  Genre(
+    id: 1,
+    name: 'Драма',
+    description: 'Серьёзный сюжет о конфликте человека с обществом или собой',
+  ),
+  Genre(
+    id: 2,
+    name: 'Комедия',
+    description: 'Весёлое представление со счастливым финалом',
+  ),
+  Genre(
+    id: 3,
+    name: 'Опера',
+    description: 'Музыкально-драматическое произведение, где текст поётся',
+  ),
+  Genre(id: 4, name: 'Балет', description: 'Сюжет передаётся танцем и музыкой'),
+  Genre(
+    id: 5,
+    name: 'Мюзикл',
+    description: 'Сочетание диалогов, песен и танцев',
+  ),
+  Genre(
+    id: 6,
+    name: 'Трагедия',
+    description: 'Неразрешимый конфликт и гибель героя',
+  ),
+  Genre(
+    id: 7,
+    name: 'Детский',
+    description: 'Спектакли для зрителей младшего возраста',
+  ),
+];
+
+// Имена актёров выдуманные. В каждом театре по два актёра:
+// у театра N это актёры 2N-1 и 2N.
+const seedActors = [
+  Actor(
+    id: 1,
+    lastName: 'Орлова',
+    firstName: 'Анна',
+    country: 'Россия',
+    birthYear: 1990,
+    theatreId: 1,
+  ),
+  Actor(
+    id: 2,
+    lastName: 'Соколов',
+    firstName: 'Игорь',
+    country: 'Россия',
+    birthYear: 1985,
+    theatreId: 1,
+  ),
+  Actor(
+    id: 3,
+    lastName: 'Миронова',
+    firstName: 'Елена',
+    country: 'Россия',
+    birthYear: 1978,
+    theatreId: 2,
+  ),
+  Actor(
+    id: 4,
+    lastName: 'Громов',
+    firstName: 'Павел',
+    country: 'Россия',
+    birthYear: 1982,
+    theatreId: 2,
+  ),
+  Actor(
+    id: 5,
+    lastName: 'Ланская',
+    firstName: 'Мария',
+    country: 'Россия',
+    birthYear: 1993,
+    theatreId: 3,
+  ),
+  Actor(
+    id: 6,
+    lastName: 'Ветров',
+    firstName: 'Олег',
+    country: 'Беларусь',
+    birthYear: 1975,
+    theatreId: 3,
+  ),
+  Actor(
+    id: 7,
+    lastName: 'Белова',
+    firstName: 'Ирина',
+    country: 'Россия',
+    birthYear: 1988,
+    theatreId: 4,
+  ),
+  Actor(
+    id: 8,
+    lastName: 'Карпов',
+    firstName: 'Денис',
+    country: 'Россия',
+    birthYear: 1991,
+    theatreId: 4,
+  ),
+  Actor(
+    id: 9,
+    lastName: 'Зорина',
+    firstName: 'Ольга',
+    country: 'Казахстан',
+    birthYear: 1984,
+    theatreId: 5,
+  ),
+  Actor(
+    id: 10,
+    lastName: 'Ершов',
+    firstName: 'Михаил',
+    country: 'Россия',
+    birthYear: 1970,
+    theatreId: 5,
+  ),
+  Actor(
+    id: 11,
+    lastName: 'Светлова',
+    firstName: 'Дарья',
+    country: 'Россия',
+    birthYear: 1996,
+    theatreId: 6,
+  ),
+  Actor(
+    id: 12,
+    lastName: 'Ильин',
+    firstName: 'Артём',
+    country: 'Россия',
+    birthYear: 1989,
+    theatreId: 6,
+  ),
+  Actor(
+    id: 13,
+    lastName: 'Руднева',
+    firstName: 'Татьяна',
+    country: 'Россия',
+    birthYear: 1981,
+    theatreId: 7,
+  ),
+  Actor(
+    id: 14,
+    lastName: 'Носов',
+    firstName: 'Кирилл',
+    country: 'Россия',
+    birthYear: 1994,
+    theatreId: 7,
+  ),
+  Actor(
+    id: 15,
+    lastName: 'Данилова',
+    firstName: 'Ксения',
+    country: 'Россия',
+    birthYear: 1992,
+    theatreId: 8,
+  ),
+  Actor(
+    id: 16,
+    lastName: 'Фролов',
+    firstName: 'Виктор',
+    country: 'Россия',
+    birthYear: 1979,
+    theatreId: 8,
+  ),
+  Actor(
+    id: 17,
+    lastName: 'Гарипова',
+    firstName: 'Алсу',
+    country: 'Россия',
+    birthYear: 1990,
+    theatreId: 9,
+  ),
+  Actor(
+    id: 18,
+    lastName: 'Хайруллин',
+    firstName: 'Рустам',
+    country: 'Россия',
+    birthYear: 1983,
+    theatreId: 9,
+  ),
+  Actor(
+    id: 19,
+    lastName: 'Левченко',
+    firstName: 'Юлия',
+    country: 'Украина',
+    birthYear: 1987,
+    theatreId: 10,
+  ),
+  Actor(
+    id: 20,
+    lastName: 'Степанов',
+    firstName: 'Роман',
+    country: 'Россия',
+    birthYear: 1976,
+    theatreId: 10,
+  ),
+];
+
 Show _show(
   int id,
   String title,
@@ -107,6 +309,8 @@ Show _show(
     price: price,
     theatreId: theatreId,
     genreIds: genreIds,
+    // играют актёры из труппы этого же театра
+    actorIds: [theatreId * 2 - 1, if (id.isEven) theatreId * 2],
     seatsTotal: total,
     seatsAvailable: available,
   );
@@ -316,5 +520,104 @@ final seedShows = [
     1200,
     200,
     120,
+  ),
+];
+
+final seedSpectators = [
+  Spectator(
+    id: 1,
+    lastName: 'Иванов',
+    firstName: 'Сергей',
+    email: 'ivanov@mail.ru',
+    phone: '+79161234567',
+    card: SpectatorCard(
+      number: '100001',
+      issuedAt: DateTime(2024, 3, 12),
+      discount: 5,
+    ),
+  ),
+  Spectator(
+    id: 2,
+    lastName: 'Петрова',
+    firstName: 'Наталья',
+    email: 'petrova@yandex.ru',
+    phone: '+79032223344',
+    card: SpectatorCard(
+      number: '100002',
+      issuedAt: DateTime(2024, 9, 1),
+      discount: 10,
+    ),
+  ),
+  Spectator(
+    id: 3,
+    lastName: 'Кузнецов',
+    firstName: 'Андрей',
+    email: 'kuznetsov@gmail.com',
+    phone: '+79265556677',
+    card: SpectatorCard(
+      number: '100003',
+      issuedAt: DateTime(2025, 1, 20),
+      discount: 0,
+    ),
+  ),
+  Spectator(
+    id: 4,
+    lastName: 'Смирнова',
+    firstName: 'Ольга',
+    email: 'smirnova@mail.ru',
+    phone: '+79857778899',
+    card: SpectatorCard(
+      number: '100004',
+      issuedAt: DateTime(2025, 5, 14),
+      discount: 15,
+    ),
+  ),
+  Spectator(
+    id: 5,
+    lastName: 'Попов',
+    firstName: 'Дмитрий',
+    email: 'popov@inbox.ru',
+    phone: '+79101112233',
+    card: SpectatorCard(
+      number: '100005',
+      issuedAt: DateTime(2025, 8, 3),
+      discount: 5,
+    ),
+  ),
+  Spectator(
+    id: 6,
+    lastName: 'Васильева',
+    firstName: 'Екатерина',
+    email: 'vasilyeva@yandex.ru',
+    phone: '+79209998877',
+    card: SpectatorCard(
+      number: '100006',
+      issuedAt: DateTime(2025, 11, 27),
+      discount: 20,
+    ),
+  ),
+  Spectator(
+    id: 7,
+    lastName: 'Новиков',
+    firstName: 'Алексей',
+    email: 'novikov@gmail.com',
+    phone: '+79994445566',
+    card: SpectatorCard(
+      number: '100007',
+      issuedAt: DateTime(2026, 2, 9),
+      discount: 0,
+    ),
+  ),
+  Spectator(
+    id: 8,
+    lastName: 'Морозова',
+    firstName: 'Анастасия',
+    email: 'morozova@mail.ru',
+    phone: '+79176663322',
+    card: SpectatorCard(
+      number: '100008',
+      issuedAt: DateTime(2026, 6, 18),
+      discount: 10,
+    ),
   ),
 ];

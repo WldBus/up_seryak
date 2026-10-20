@@ -2,19 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../core/format.dart';
-import '../core/router.dart';
-import '../models/genre.dart';
-import '../models/show.dart';
-import '../models/show_query.dart';
-import '../state/show_list_notifier.dart';
-import '../widgets/debounced_field.dart';
-import '../widgets/entity_list_view.dart';
-import '../widgets/entity_table.dart';
-import '../widgets/network_toggle.dart';
+import '../../core/format.dart';
+import '../../core/router.dart';
+import '../../models/show.dart';
+import '../../models/show_query.dart';
+import '../../state/catalog.dart';
+import '../../state/show_list_notifier.dart';
+import '../../widgets/debounced_field.dart';
+import '../../widgets/entity_list_view.dart';
+import '../../widgets/entity_table.dart';
+import '../../widgets/network_toggle.dart';
 
 class ShowListScreen extends StatefulWidget {
-  /// Условия отбора, прочитанные из адреса.
+  /// фильтры, которые пришли из адреса
   final ShowQuery query;
 
   const ShowListScreen({super.key, required this.query});
@@ -36,30 +36,38 @@ class _ShowListScreenState extends State<ShowListScreen> {
     if (old.query != widget.query) _sync();
   }
 
-  /// Передаёт условия из адреса в notifier. Отложено до конца кадра:
-  /// notifyListeners() во время построения дерева запрещён.
+  /// отдаю фильтры из адреса в notifier, но после отрисовки кадра:
+  /// вызывать notifyListeners() прямо во время build нельзя
   void _sync() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) context.read<ShowListNotifier>().sync(widget.query);
     });
   }
 
-  /// Любое изменение условий — это переход на новый адрес. Экран
-  /// перестраивается из адреса, а в истории браузера остаётся шаг назад.
+  /// любое изменение фильтров — это просто переход на новый адрес,
+  /// поэтому в истории браузера остаётся шаг назад
   void _go(ShowQuery q) => context.go(showsLocation(q));
 
   @override
   Widget build(BuildContext context) {
     final q = widget.query;
-    final notifier = context.watch<ShowListNotifier>();
+    final catalog = context.watch<Catalog>();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Спектакли'),
-        actions: const [NetworkToggle(), SizedBox(width: 8)],
+        actions: [
+          FilledButton.icon(
+            onPressed: () => context.go('/shows/new'),
+            icon: const Icon(Icons.add),
+            label: const Text('Добавить'),
+          ),
+          const NetworkToggle(),
+          const SizedBox(width: 8),
+        ],
       ),
       body: EntityListView<Show, ShowListNotifier>(
-        filters: _filters(q, notifier),
+        filters: _filters(q, catalog),
         sortField: q.sortField,
         sortAscending: q.sortAscending,
         hasFilters: q.hasFilters,
@@ -73,9 +81,10 @@ class _ShowListScreenState extends State<ShowListScreen> {
         onPage: (page) => _go(q.copyWith(page: page)),
         onSize: (size) => _go(q.copyWith(size: size)),
         onOpen: (s) => context.go('/shows/${s.id}'),
+        onEdit: (s) => context.go('/shows/${s.id}/edit'),
         titleOf: (s) => s.title,
         subtitleOf: (s) =>
-            '${notifier.theatreName(s.theatreId)} · '
+            '${catalog.theatreName(s.theatreId)} · '
             '${formatDateTime(s.date)} · ${formatPrice(s.price)}',
         columns: [
           TableColumnSpec(
@@ -86,7 +95,7 @@ class _ShowListScreenState extends State<ShowListScreen> {
           TableColumnSpec(label: 'Код', build: (s) => Text(s.code)),
           TableColumnSpec(
             label: 'Театр',
-            build: (s) => Text(notifier.theatreName(s.theatreId)),
+            build: (s) => Text(catalog.theatreName(s.theatreId)),
           ),
           TableColumnSpec(
             label: 'Дата',
@@ -115,8 +124,8 @@ class _ShowListScreenState extends State<ShowListScreen> {
     );
   }
 
-  Widget _filters(ShowQuery q, ShowListNotifier notifier) {
-    // Wrap переносит поля на следующую строку, когда окно узкое
+  Widget _filters(ShowQuery q, Catalog catalog) {
+    // Wrap, чтобы на узком окне поля переносились на новую строку
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -134,13 +143,13 @@ class _ShowListScreenState extends State<ShowListScreen> {
         SizedBox(
           width: 170,
           child: DropdownButtonFormField<int?>(
-            // Значение из адреса может не совпасть ни с одним пунктом
-            // (испорченная ссылка) — тогда показываем «Все»
-            initialValue: genres.any((g) => g.id == q.genreId)
+            // если в адресе какой-то левый id, которого нет в списке,
+            // показываем «Все», иначе выпадающий список упадёт
+            initialValue: catalog.genres.any((g) => g.id == q.genreId)
                 ? q.genreId
                 : null,
-            // key заставляет поле перечитать значение при смене адреса
-            key: ValueKey('genre-${q.genreId}'),
+            // key нужен, чтобы поле обновилось, когда меняется адрес
+            key: ValueKey('genre-${q.genreId}-${catalog.genres.length}'),
             isDense: true,
             decoration: const InputDecoration(
               labelText: 'Жанр',
@@ -149,7 +158,7 @@ class _ShowListScreenState extends State<ShowListScreen> {
             ),
             items: [
               const DropdownMenuItem(value: null, child: Text('Все')),
-              for (final g in genres)
+              for (final g in catalog.genres)
                 DropdownMenuItem(value: g.id, child: Text(g.name)),
             ],
             onChanged: (v) => _go(q.copyWith(genreId: v)),
@@ -158,10 +167,10 @@ class _ShowListScreenState extends State<ShowListScreen> {
         SizedBox(
           width: 230,
           child: DropdownButtonFormField<int?>(
-            initialValue: notifier.theatres.any((t) => t.id == q.theatreId)
+            initialValue: catalog.theatres.any((t) => t.id == q.theatreId)
                 ? q.theatreId
                 : null,
-            key: ValueKey('theatre-${q.theatreId}-${notifier.theatres.length}'),
+            key: ValueKey('theatre-${q.theatreId}-${catalog.theatres.length}'),
             isDense: true,
             isExpanded: true,
             decoration: const InputDecoration(
@@ -171,7 +180,7 @@ class _ShowListScreenState extends State<ShowListScreen> {
             ),
             items: [
               const DropdownMenuItem(value: null, child: Text('Все')),
-              for (final t in notifier.theatres)
+              for (final t in catalog.theatres)
                 DropdownMenuItem(
                   value: t.id,
                   child: Text(t.name, overflow: TextOverflow.ellipsis),

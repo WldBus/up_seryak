@@ -7,11 +7,12 @@ import '../models/page_result.dart';
 import '../state/entity_list_notifier.dart';
 import '../state/list_state.dart';
 import 'entity_table.dart';
+import 'feedback.dart';
 import 'pager_bar.dart';
 
-/// Общий экран списка: панель фильтров, полоса выделения, таблица или
-/// карточки в зависимости от ширины, пагинация и все состояния загрузки.
-/// Конкретный экран задаёт только фильтры, колонки и подписи.
+/// Общий экран списка: фильтры, полоса с выбранными, таблица или карточки
+/// (зависит от ширины), страницы и все состояния загрузки. Конкретному
+/// экрану остаётся задать фильтры, колонки и подписи.
 class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     extends StatelessWidget {
   final Widget filters;
@@ -27,6 +28,9 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
   final ValueChanged<int> onSize;
   final ValueChanged<T> onOpen;
 
+  /// переход в форму редактирования. если null — кнопки «Изменить» нет
+  final ValueChanged<T>? onEdit;
+
   const EntityListView({
     super.key,
     required this.filters,
@@ -41,6 +45,7 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     required this.onPage,
     required this.onSize,
     required this.onOpen,
+    this.onEdit,
   });
 
   @override
@@ -50,8 +55,8 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // На узком окне фильтры сворачиваются, иначе под список не остаётся
-        // места. Раскрытие панели — локальное состояние ExpansionTile
+        // на узком окне прячу фильтры в раскрывающуюся панель, а то для списка
+        // не остаётся места. открыта она или нет, помнит сам ExpansionTile
         if (MediaQuery.sizeOf(context).width < tableBreakpoint)
           ExpansionTile(
             leading: const Icon(Icons.tune),
@@ -139,13 +144,13 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     );
   }
 
-  void _softDelete(BuildContext context, T item) => _run(
+  void _softDelete(BuildContext context, T item) => runWithFeedback(
     context,
     '«${titleOf(item)}» удалено',
     () => context.read<N>().softDelete(item.id),
   );
 
-  void _restore(BuildContext context, T item) => _run(
+  void _restore(BuildContext context, T item) => runWithFeedback(
     context,
     'Запись восстановлена',
     () => context.read<N>().restore(item.id),
@@ -158,7 +163,7 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
       text: '«${titleOf(item)}» будет стёрто без возможности восстановления.',
     );
     if (ok && context.mounted) {
-      await _run(
+      await runWithFeedback(
         context,
         'Запись стёрта',
         () => context.read<N>().hardDelete(item.id),
@@ -166,9 +171,15 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     }
   }
 
-  /// Кнопки в строке таблицы.
+  /// кнопки в строке таблицы
   List<Widget> _actions(BuildContext context, T item) {
     return [
+      if (onEdit != null && !item.isDeleted)
+        IconButton(
+          tooltip: 'Изменить',
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: () => onEdit!(item),
+        ),
       if (item.isDeleted)
         IconButton(
           tooltip: 'Восстановить',
@@ -189,12 +200,17 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     ];
   }
 
-  /// На карточке места мало, поэтому те же действия собраны в меню.
+  /// на карточке мало места, поэтому кнопки убрал в меню
   Widget _menu(BuildContext context, T item) {
     return PopupMenuButton<void Function()>(
       tooltip: 'Действия',
       onSelected: (action) => action(),
       itemBuilder: (_) => [
+        if (onEdit != null && !item.isDeleted)
+          PopupMenuItem(
+            value: () => onEdit!(item),
+            child: const Text('Изменить'),
+          ),
         if (item.isDeleted)
           PopupMenuItem(
             value: () => _restore(context, item),
@@ -212,46 +228,6 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
       ],
     );
   }
-}
-
-/// Выполняет операцию и сообщает результат во всплывающей полосе.
-Future<void> _run(
-  BuildContext context,
-  String done,
-  Future<void> Function() action,
-) async {
-  final messenger = ScaffoldMessenger.of(context);
-  try {
-    await action();
-    messenger.showSnackBar(SnackBar(content: Text(done)));
-  } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-  }
-}
-
-Future<bool> confirmDialog(
-  BuildContext context, {
-  required String title,
-  required String text,
-}) async {
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: Text(text),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Отмена'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Удалить'),
-        ),
-      ],
-    ),
-  );
-  return result ?? false;
 }
 
 class _SelectionBar<T extends Entity, N extends EntityListNotifier<T, Object?>>
@@ -284,15 +260,11 @@ class _SelectionBar<T extends Entity, N extends EntityListNotifier<T, Object?>>
                     'Их можно будет восстановить, включив показ удалённых.',
               );
               if (!ok || !context.mounted) return;
-              final messenger = ScaffoldMessenger.of(context);
-              try {
-                final n = await context.read<N>().deleteSelected();
-                messenger.showSnackBar(
-                  SnackBar(content: Text('Удалено записей: $n')),
-                );
-              } catch (e) {
-                messenger.showSnackBar(SnackBar(content: Text('Ошибка: $e')));
-              }
+              await runWithFeedback(
+                context,
+                'Удалено записей: $count',
+                context.read<N>().deleteSelected,
+              );
             },
           ),
         ],
@@ -316,7 +288,7 @@ class _EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Записи есть, но страница за пределами выборки (например, после удаления)
+    // записи вообще есть, просто эта страница пустая (например, после удаления)
     final beyondEnd = page.total > 0;
     return Center(
       child: Column(

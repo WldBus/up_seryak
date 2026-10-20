@@ -1,13 +1,22 @@
 import '../core/fake_network.dart';
 import '../models/show.dart';
 import '../models/show_query.dart';
-import 'in_memory_repository.dart';
+import 'local_store.dart';
+import 'persistent_repository.dart';
 import 'seed.dart';
 import 'show_repository.dart';
 
-class InMemoryShowRepository extends InMemoryRepository<Show, ShowQuery>
+class PersistentShowRepository extends PersistentRepository<Show, ShowQuery>
     implements ShowRepository {
-  InMemoryShowRepository(FakeNetwork network) : super(network, seedShows);
+  PersistentShowRepository(FakeNetwork network, LocalStore store)
+    : super(
+        network: network,
+        store: store,
+        name: 'shows',
+        title: 'Спектакли',
+        fromJson: Show.fromJson,
+        seed: seedShows,
+      );
 
   @override
   bool matches(Show s, ShowQuery q) {
@@ -30,6 +39,13 @@ class InMemoryShowRepository extends InMemoryRepository<Show, ShowQuery>
     'price' => a.price.compareTo(b.price),
     'duration' => a.duration.compareTo(b.duration),
     _ => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+  };
+
+  /// код постановки не должен повторяться (как ISBN у книги)
+  @override
+  Map<String, String> uniqueErrors(Show item) => {
+    if (isTaken(item, (o) => o.code.toUpperCase() == item.code.toUpperCase()))
+      'code': 'Спектакль с кодом ${item.code} уже есть',
   };
 
   @override

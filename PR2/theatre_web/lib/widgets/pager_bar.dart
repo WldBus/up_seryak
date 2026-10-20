@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/page_result.dart';
 import '../models/query_params.dart';
 
-/// Переходы между страницами и выбор размера страницы.
+/// Кнопки для переключения страниц и выбор, сколько записей на странице.
 class PagerBar extends StatelessWidget {
   final PageResult<Object?> page;
   final ValueChanged<int> onPage;

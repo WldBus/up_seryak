@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Описание одной колонки таблицы.
+/// Описание одной колонки.
 class TableColumnSpec<T> {
   final String label;
 
-  /// Поле сортировки; null — по колонке не сортируют.
+  /// поле для сортировки, null — по этой колонке не сортируем
   final String? sortField;
   final bool numeric;
   final Widget Function(T item) build;
@@ -17,8 +17,8 @@ class TableColumnSpec<T> {
   });
 }
 
-/// Обобщённая таблица для любой сущности: книги, театры, спектакли
-/// различаются только списком колонок.
+/// Одна таблица для всех сущностей: спектакли, театры, актёры и т. д.
+/// отличаются только списком колонок.
 class EntityTable<T> extends StatelessWidget {
   final List<TableColumnSpec<T>> columns;
   final List<T> items;
@@ -27,7 +27,7 @@ class EntityTable<T> extends StatelessWidget {
   final ValueChanged<int>? onToggleSelect;
   final ValueChanged<bool>? onSelectAll;
 
-  /// Строки, которые нельзя выделить (например, уже удалённые).
+  /// строки, которые нельзя выбрать (например, удалённые)
   final bool Function(T item)? isDisabled;
   final ValueChanged<T>? onOpen;
   final String? sortField;
@@ -59,7 +59,7 @@ class EntityTable<T> extends StatelessWidget {
     final muted = Theme.of(context).disabledColor;
 
     final table = DataTable(
-      // DataTable сам рисует стрелку у активной колонки
+      // стрелку у отсортированной колонки DataTable рисует сам
       sortColumnIndex: sortIndex == -1 ? null : sortIndex,
       sortAscending: sortAscending,
       showCheckboxColumn: onToggleSelect != null,
@@ -86,8 +86,8 @@ class EntityTable<T> extends StatelessWidget {
       ],
     );
 
-    // DataTable не прокручивается и не сжимается: нужна двумерная прокрутка,
-    // а minWidth растягивает таблицу на всю ширину широкого окна
+    // DataTable сам не прокручивается и не сжимается, поэтому прокрутка в обе
+    // стороны, а minWidth растягивает таблицу на всю ширину, если окно широкое
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: SingleChildScrollView(

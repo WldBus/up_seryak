@@ -1,6 +1,6 @@
 import 'query_params.dart';
 
-/// Все условия отбора списка спектаклей в одном неизменяемом объекте.
+/// Все фильтры для списка спектаклей в одном объекте.
 class ShowQuery implements PagedQuery {
   static const sortFields = ['title', 'date', 'price', 'duration'];
 
@@ -59,14 +59,14 @@ class ShowQuery implements PagedQuery {
       priceTo: priceTo == _unset ? this.priceTo : priceTo as int?,
       sortField: sortField ?? this.sortField,
       sortAscending: sortAscending ?? this.sortAscending,
-      // Любое изменение условий отбора возвращает на первую страницу
+      // поменяли фильтры — всегда возвращаемся на первую страницу
       page: page ?? 1,
       size: size ?? this.size,
       includeDeleted: includeDeleted ?? this.includeDeleted,
     );
   }
 
-  /// `_unset` отличает «параметр не передан» от «передан null — сбросить».
+  /// _unset нужен, чтобы отличить «не передали» от «передали null = сбросить фильтр»
   static const _unset = Object();
 
   factory ShowQuery.fromParams(Map<String, String> p) {

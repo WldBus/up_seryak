@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// Текстовое поле, которое сообщает об изменении не на каждое нажатие,
-/// а через [delay] после окончания ввода.
+/// Поле ввода, которое сообщает об изменении не на каждую букву,
+/// а через delay после того, как перестали печатать.
 class DebouncedField extends StatefulWidget {
   final String value;
   final String label;
@@ -34,8 +34,8 @@ class _DebouncedFieldState extends State<DebouncedField> {
   @override
   void didUpdateWidget(DebouncedField old) {
     super.didUpdateWidget(old);
-    // Значение пришло извне (кнопка «назад», сброс фильтров) — показываем
-    // его, но не затираем то, что пользователь печатает прямо сейчас
+    // значение поменялось снаружи (нажали «назад» или «Сбросить») — ставим его,
+    // но только если человек сейчас не печатает, чтобы не стереть его текст
     final typing = _timer?.isActive ?? false;
     if (!typing && widget.value != _controller.text) {
       _controller.text = widget.value;

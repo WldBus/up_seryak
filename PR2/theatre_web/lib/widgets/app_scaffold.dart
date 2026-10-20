@@ -4,45 +4,67 @@ import 'package:provider/provider.dart';
 
 import '../core/breakpoints.dart';
 import '../core/router.dart';
+import '../core/storage_notice.dart';
+import '../state/actor_list_notifier.dart';
+import '../state/genre_list_notifier.dart';
 import '../state/show_list_notifier.dart';
+import '../state/spectator_list_notifier.dart';
 import '../state/theatre_list_notifier.dart';
 
-/// Каркас с навигацией: снизу на узком окне, сбоку на широком.
+/// Общий каркас с меню: снизу на телефоне, сбоку на компьютере.
+/// Сверху может появиться полоса с сообщением про сохранённые данные.
 class AppScaffold extends StatelessWidget {
   final String location;
   final Widget child;
 
   const AppScaffold({super.key, required this.location, required this.child});
 
-  static const _destinations = [
-    (icon: Icons.theater_comedy, label: 'Спектакли'),
-    (icon: Icons.account_balance, label: 'Театры'),
+  static const _sections = [
+    (path: '/shows', icon: Icons.theater_comedy, label: 'Спектакли'),
+    (path: '/theatres', icon: Icons.account_balance, label: 'Театры'),
+    (path: '/actors', icon: Icons.person, label: 'Актёры'),
+    (path: '/genres', icon: Icons.category, label: 'Жанры'),
+    (path: '/spectators', icon: Icons.badge, label: 'Зрители'),
   ];
 
-  int get _index => location.startsWith('/theatres') ? 1 : 0;
+  int get _index {
+    final i = _sections.indexWhere((s) => location.startsWith(s.path));
+    return i == -1 ? 0 : i;
+  }
 
   void _select(BuildContext context, int i) {
-    // Возвращаемся к списку с теми условиями, что были выбраны раньше
-    context.go(
-      i == 0
-          ? showsLocation(context.read<ShowListNotifier>().query)
-          : theatresLocation(context.read<TheatreListNotifier>().query),
-    );
+    // возвращаемся в список с теми фильтрами, которые были до этого
+    final path = _sections[i].path;
+    final params = switch (path) {
+      '/theatres' => context.read<TheatreListNotifier>().query.toParams(),
+      '/actors' => context.read<ActorListNotifier>().query.toParams(),
+      '/genres' => context.read<GenreListNotifier>().query.toParams(),
+      '/spectators' => context.read<SpectatorListNotifier>().query.toParams(),
+      _ => context.read<ShowListNotifier>().query.toParams(),
+    };
+    context.go(listLocation(path, params));
   }
 
   @override
   Widget build(BuildContext context) {
     final size = screenSizeOf(context);
+    final content = Column(
+      children: [
+        const _StorageBanner(),
+        Expanded(child: child),
+      ],
+    );
 
     if (size == ScreenSize.compact) {
       return Scaffold(
-        body: child,
+        body: content,
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: (i) => _select(context, i),
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
           destinations: [
-            for (final d in _destinations)
-              NavigationDestination(icon: Icon(d.icon), label: d.label),
+            for (final s in _sections)
+              NavigationDestination(icon: Icon(s.icon), label: s.label),
           ],
         ),
       );
@@ -59,17 +81,36 @@ class AppScaffold extends StatelessWidget {
                 ? NavigationRailLabelType.none
                 : NavigationRailLabelType.all,
             destinations: [
-              for (final d in _destinations)
+              for (final s in _sections)
                 NavigationRailDestination(
-                  icon: Icon(d.icon),
-                  label: Text(d.label),
+                  icon: Icon(s.icon),
+                  label: Text(s.label),
                 ),
             ],
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: child),
+          Expanded(child: content),
         ],
       ),
+    );
+  }
+}
+
+/// Полоса с сообщением, что данные устарели или побились
+/// и загружен начальный набор.
+class _StorageBanner extends StatelessWidget {
+  const _StorageBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final notice = context.watch<StorageNotice>();
+    if (notice.messages.isEmpty) return const SizedBox.shrink();
+    return MaterialBanner(
+      leading: const Icon(Icons.info_outline),
+      content: Text(notice.messages.join('\n')),
+      actions: [
+        TextButton(onPressed: notice.clear, child: const Text('Понятно')),
+      ],
     );
   }
 }

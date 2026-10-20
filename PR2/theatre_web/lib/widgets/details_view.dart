@@ -2,15 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../models/entity.dart';
+import 'feedback.dart';
 import 'network_toggle.dart';
 
-/// Карточка записи: загрузка по идентификатору и таблица «поле — значение».
+/// Карточка записи: грузит её по id и показывает поля списком.
 class DetailsView<T extends Entity> extends StatefulWidget {
   final String title;
   final String backLocation;
   final Future<T?> Function() load;
   final String Function(T item) headingOf;
   final List<(String, String)> Function(T item) fieldsOf;
+
+  /// куда переходить по кнопке «Изменить»
+  final String Function(T item)? editLocation;
+
+  /// удаление в корзину (может не получиться, если есть связи)
+  final Future<void> Function(T item)? onDelete;
 
   const DetailsView({
     super.key,
@@ -19,6 +26,8 @@ class DetailsView<T extends Entity> extends StatefulWidget {
     required this.load,
     required this.headingOf,
     required this.fieldsOf,
+    this.editLocation,
+    this.onDelete,
   });
 
   @override
@@ -26,8 +35,8 @@ class DetailsView<T extends Entity> extends StatefulWidget {
 }
 
 class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
-  // Запрос создаётся один раз, а не в build: иначе каждая перерисовка
-  // запускала бы загрузку заново
+  // запрос создаю один раз, а не в build, иначе при каждой
+  // перерисовке он бы запускался заново
   late Future<T?> _future = widget.load();
 
   @override
@@ -113,6 +122,29 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
                         ],
                       ),
                     ),
+                  if (!item.isDeleted &&
+                      (widget.editLocation != null || widget.onDelete != null))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Wrap(
+                        spacing: 12,
+                        children: [
+                          if (widget.editLocation != null)
+                            FilledButton.icon(
+                              onPressed: () =>
+                                  context.go(widget.editLocation!(item)),
+                              icon: const Icon(Icons.edit),
+                              label: const Text('Изменить'),
+                            ),
+                          if (widget.onDelete != null)
+                            OutlinedButton.icon(
+                              onPressed: () => _delete(item),
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Удалить'),
+                            ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -120,5 +152,22 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
         ),
       ),
     );
+  }
+
+  Future<void> _delete(T item) async {
+    final ok = await confirmDialog(
+      context,
+      title: 'Удалить запись?',
+      text:
+          '«${widget.headingOf(item)}» будет перемещено в удалённые. '
+          'Его можно будет восстановить из списка.',
+    );
+    if (!ok || !mounted) return;
+    final done = await runWithFeedback(
+      context,
+      'Запись удалена',
+      () => widget.onDelete!(item),
+    );
+    if (done && mounted) context.go(widget.backLocation);
   }
 }

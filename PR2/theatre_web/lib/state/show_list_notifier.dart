@@ -1,36 +1,25 @@
 import '../models/show.dart';
 import '../models/show_query.dart';
-import '../models/theatre.dart';
 import '../repositories/show_repository.dart';
-import '../repositories/theatre_repository.dart';
+import 'catalog.dart';
 import 'entity_list_notifier.dart';
 
 class ShowListNotifier extends EntityListNotifier<Show, ShowQuery> {
-  final TheatreRepository _theatres;
+  /// справочники: названия театров, жанров и актёров для таблицы
+  /// и варианты для фильтров
+  final Catalog catalog;
 
-  ShowListNotifier(ShowRepository shows, this._theatres)
+  ShowListNotifier(ShowRepository shows, this.catalog)
     : super(shows, const ShowQuery());
 
-  /// Справочник театров: для фильтра и подписи в строке спектакля.
-  List<Theatre> theatres = const [];
-
-  String theatreName(int id) {
-    for (final t in theatres) {
-      if (t.id == id) return t.name;
-    }
-    return '—';
-  }
-
   @override
-  Future<void> beforeLoad() async {
-    theatres = await _theatres.findAll();
-  }
+  Future<void> beforeLoad() => catalog.refresh();
 
-  /// Карточку могут открыть по прямой ссылке, когда список ещё не
-  /// загружался, поэтому справочник театров подгружается и здесь.
+  /// карточку могут открыть сразу по ссылке, когда список ещё не грузился,
+  /// поэтому справочники догружаю и тут
   @override
   Future<Show?> findById(int id) async {
-    if (theatres.isEmpty) theatres = await _theatres.findAll();
+    await catalog.ensureLoaded();
     return super.findById(id);
   }
 }

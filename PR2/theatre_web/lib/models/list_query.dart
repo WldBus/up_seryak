@@ -1,9 +1,13 @@
 import 'query_params.dart';
 
-/// Условия отбора списка театров. Поиск идёт по названию и городу.
-class TheatreQuery implements PagedQuery {
-  static const sortFields = ['name', 'city', 'hallSeats', 'founded'];
-
+/// Фильтры для простых списков (театры, актёры, жанры, зрители):
+/// поиск, сортировка, страница и показ удалённых. У спектаклей фильтров
+/// больше, поэтому у них свой ShowQuery.
+///
+/// Поля сортировки у каждой сущности свои, поэтому передаю их сюда,
+/// но в сравнении они не участвуют.
+class ListQuery implements PagedQuery {
+  final List<String> sortFields;
   final String search;
   final String sortField;
   @override
@@ -15,18 +19,19 @@ class TheatreQuery implements PagedQuery {
   @override
   final bool includeDeleted;
 
-  const TheatreQuery({
+  ListQuery({
+    required this.sortFields,
     this.search = '',
-    this.sortField = 'name',
+    String? sortField,
     this.sortAscending = true,
     this.page = 1,
     this.size = 10,
     this.includeDeleted = false,
-  });
+  }) : sortField = sortField ?? sortFields.first;
 
   bool get hasFilters => search.isNotEmpty;
 
-  TheatreQuery copyWith({
+  ListQuery copyWith({
     String? search,
     String? sortField,
     bool? sortAscending,
@@ -34,19 +39,28 @@ class TheatreQuery implements PagedQuery {
     int? size,
     bool? includeDeleted,
   }) {
-    return TheatreQuery(
+    return ListQuery(
+      sortFields: sortFields,
       search: search ?? this.search,
       sortField: sortField ?? this.sortField,
       sortAscending: sortAscending ?? this.sortAscending,
+      // поменяли фильтры — всегда возвращаемся на первую страницу
       page: page ?? 1,
       size: size ?? this.size,
       includeDeleted: includeDeleted ?? this.includeDeleted,
     );
   }
 
-  factory TheatreQuery.fromParams(Map<String, String> p) {
+  /// для кнопки «Сбросить»: фильтры по умолчанию, но размер страницы тот же
+  ListQuery reset() => ListQuery(sortFields: sortFields, size: size);
+
+  factory ListQuery.fromParams(
+    Map<String, String> p, {
+    required List<String> sortFields,
+  }) {
     final (sortField, sortAscending) = parseSort(p['sort'], sortFields);
-    return TheatreQuery(
+    return ListQuery(
+      sortFields: sortFields,
       search: p['search']?.trim() ?? '',
       sortField: sortField,
       sortAscending: sortAscending,
@@ -72,7 +86,7 @@ class TheatreQuery implements PagedQuery {
 
   @override
   bool operator ==(Object other) =>
-      other is TheatreQuery &&
+      other is ListQuery &&
       other.search == search &&
       other.sortField == sortField &&
       other.sortAscending == sortAscending &&

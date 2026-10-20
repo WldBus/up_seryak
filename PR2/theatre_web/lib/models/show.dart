@@ -1,18 +1,23 @@
 import 'entity.dart';
+import 'json.dart';
 
-/// Спектакль — показ, на который продаются билеты.
+/// Спектакль — на него бронируют билеты.
+///
+/// Связи: театр — многие к одному (theatreId), жанры и актёры —
+/// многие ко многим (genreIds, actorIds).
 class Show implements Entity {
   @override
   final int id;
   final String title;
 
-  /// Код постановки, например SP-1004. По нему тоже работает поиск.
+  /// код постановки, например SP-1004. не должен повторяться, по нему тоже ищем
   final String code;
   final DateTime date;
   final int duration; // минуты
   final int price; // рубли
   final int theatreId;
   final List<int> genreIds;
+  final List<int> actorIds;
   final int seatsTotal;
   final int seatsAvailable;
   @override
@@ -27,6 +32,7 @@ class Show implements Entity {
     required this.price,
     required this.theatreId,
     required this.genreIds,
+    required this.actorIds,
     required this.seatsTotal,
     required this.seatsAvailable,
     this.deletedAt,
@@ -41,6 +47,7 @@ class Show implements Entity {
     int? price,
     int? theatreId,
     List<int>? genreIds,
+    List<int>? actorIds,
     int? seatsTotal,
     int? seatsAvailable,
     DateTime? deletedAt,
@@ -55,10 +62,42 @@ class Show implements Entity {
       price: price ?? this.price,
       theatreId: theatreId ?? this.theatreId,
       genreIds: genreIds ?? this.genreIds,
+      actorIds: actorIds ?? this.actorIds,
       seatsTotal: seatsTotal ?? this.seatsTotal,
       seatsAvailable: seatsAvailable ?? this.seatsAvailable,
-      // Без флага нельзя отличить «не менять поле» от «сбросить в null»
+      // без этого флага не понять: «не трогать поле» или «сбросить в null»
       deletedAt: clearDeletedAt ? null : (deletedAt ?? this.deletedAt),
     );
   }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'code': code,
+    'date': date.toIso8601String(),
+    'duration': duration,
+    'price': price,
+    'theatreId': theatreId,
+    'genreIds': genreIds,
+    'actorIds': actorIds,
+    'seatsTotal': seatsTotal,
+    'seatsAvailable': seatsAvailable,
+    'deletedAt': deletedAt?.toIso8601String(),
+  };
+
+  factory Show.fromJson(Map<String, dynamic> json) => Show(
+    id: readInt(json, 'id'),
+    title: readString(json, 'title'),
+    code: readString(json, 'code'),
+    date: readDate(json, 'date') ?? DateTime(2000),
+    duration: readInt(json, 'duration'),
+    price: readInt(json, 'price'),
+    theatreId: readInt(json, 'theatreId'),
+    genreIds: readIntList(json, 'genreIds'),
+    actorIds: readIntList(json, 'actorIds'),
+    seatsTotal: readInt(json, 'seatsTotal'),
+    seatsAvailable: readInt(json, 'seatsAvailable'),
+    deletedAt: readDate(json, 'deletedAt'),
+  );
 }

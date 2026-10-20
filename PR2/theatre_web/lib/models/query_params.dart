@@ -1,6 +1,6 @@
-// Помощники для разбора параметров адреса. Адрес может ввести или
-// испортить сам пользователь, поэтому всё неверное заменяется значением
-// по умолчанию, а не приводит к ошибке.
+// Разбор параметров из адреса. Адрес можно ввести руками или испортить,
+// поэтому всё неправильное заменяю значением по умолчанию, чтобы ничего
+// не падало.
 
 const pageSizes = [10, 25, 50];
 
@@ -17,7 +17,7 @@ int parseSize(String? value) {
   return pageSizes.contains(size) ? size! : pageSizes.first;
 }
 
-/// Разбирает `sort=date,desc`. Возвращает поле и направление.
+/// разбирает sort=date,desc на поле и направление
 (String, bool) parseSort(String? value, List<String> allowed) {
   final parts = (value ?? '').split(',');
   final field = allowed.contains(parts.first) ? parts.first : allowed.first;
@@ -25,8 +25,8 @@ int parseSize(String? value) {
   return (field, ascending);
 }
 
-/// Общие для всех списков параметры: сортировка, страница, удалённые.
-/// Значения по умолчанию в адрес не пишутся, чтобы он оставался коротким.
+/// Общие параметры для всех списков: сортировка, страница, удалённые.
+/// Значения по умолчанию в адрес не пишу, чтобы он был короче.
 void writeCommonParams(
   Map<String, String> params, {
   required String sortField,
@@ -44,7 +44,7 @@ void writeCommonParams(
   if (includeDeleted) params['deleted'] = 'true';
 }
 
-/// То, что нужно репозиторию для постраничной выборки любого списка.
+/// что нужно репозиторию, чтобы разбить любой список на страницы
 abstract interface class PagedQuery {
   bool get sortAscending;
   int get page;

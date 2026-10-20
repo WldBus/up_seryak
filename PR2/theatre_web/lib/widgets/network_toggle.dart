@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../core/fake_network.dart';
 
-/// Кнопка в шапке: имитирует пропажу сети, чтобы проверить экран ошибки.
+/// Кнопка в шапке: «выключает сеть», чтобы проверить экран ошибки.
 class NetworkToggle extends StatelessWidget {
   const NetworkToggle({super.key});
 
