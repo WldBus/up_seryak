@@ -60,6 +60,8 @@ class SpectatorFormScreen extends StatelessWidget {
           'phone',
           'Телефон',
           hint: '+79161234567',
+          numeric: true,
+          formatters: [_RuPhoneFormatter()],
           validator: V.combine([V.required('Укажите телефон'), V.phone()]),
         ),
         const SectionSpec(
@@ -114,6 +116,29 @@ class SpectatorFormScreen extends StatelessWidget {
       cancelLocation: id == null
           ? listLocation('/spectators', notifier.query.toParams())
           : '/spectators/$id',
+    );
+  }
+}
+
+/// В телефон можно ввести только цифры, а +7 подставляется само.
+/// 8 или 7 в начале — это код страны, поэтому 89161234567 и 79161234567
+/// превращаются в +79161234567. После +7 не больше 10 цифр.
+class _RuPhoneFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue old,
+    TextEditingValue next,
+  ) {
+    final digits = next.text.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return const TextEditingValue(); // всё стёрли
+    var rest = digits.startsWith('7') || digits.startsWith('8')
+        ? digits.substring(1)
+        : digits;
+    if (rest.length > 10) rest = rest.substring(0, 10);
+    final text = '+7$rest';
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }
