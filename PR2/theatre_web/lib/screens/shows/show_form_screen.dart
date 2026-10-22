@@ -28,7 +28,8 @@ class ShowFormScreen extends StatelessWidget {
       id: id,
       createTitle: 'Новый спектакль',
       editTitle: 'Изменение спектакля',
-      prepare: catalog.refresh,
+      // справочники из кэша: с сервера только в первый раз
+      prepare: catalog.ensureLoaded,
       load: notifier.findById,
       initialValues: (s) => {
         'title': s?.title ?? '',

@@ -93,9 +93,10 @@ class Show implements Entity {
     date: readDate(json, 'date') ?? DateTime(2000),
     duration: readInt(json, 'duration'),
     price: readInt(json, 'price'),
-    theatreId: readInt(json, 'theatreId'),
-    genreIds: readIntList(json, 'genreIds'),
-    actorIds: readIntList(json, 'actorIds'),
+    // с сервера приходят развёрнутые theatre, genres, actors
+    theatreId: readRefId(json, 'theatreId', 'theatre'),
+    genreIds: readRefIds(json, 'genreIds', 'genres'),
+    actorIds: readRefIds(json, 'actorIds', 'actors'),
     seatsTotal: readInt(json, 'seatsTotal'),
     seatsAvailable: readInt(json, 'seatsAvailable'),
     deletedAt: readDate(json, 'deletedAt'),

@@ -1,21 +1,21 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import 'core/fake_network.dart';
+import 'core/api_client.dart';
+import 'core/api_test_mode.dart';
 import 'core/form_guard.dart';
 import 'core/router.dart';
-import 'core/storage_notice.dart';
 import 'repositories/actor_repository.dart';
+import 'repositories/api_actor_repository.dart';
+import 'repositories/api_genre_repository.dart';
+import 'repositories/api_show_repository.dart';
+import 'repositories/api_spectator_repository.dart';
+import 'repositories/api_theatre_repository.dart';
+import 'repositories/booking_repository.dart';
 import 'repositories/genre_repository.dart';
-import 'repositories/local_store.dart';
-import 'repositories/persistent_actor_repository.dart';
-import 'repositories/persistent_genre_repository.dart';
-import 'repositories/persistent_show_repository.dart';
-import 'repositories/persistent_spectator_repository.dart';
-import 'repositories/persistent_theatre_repository.dart';
 import 'repositories/show_repository.dart';
 import 'repositories/spectator_repository.dart';
 import 'repositories/theatre_repository.dart';
@@ -26,59 +26,76 @@ import 'state/show_list_notifier.dart';
 import 'state/spectator_list_notifier.dart';
 import 'state/theatre_list_notifier.dart';
 
-Future<void> main() async {
-  // без этого будет ошибка: ниже до runApp есть await
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
   usePathUrlStrategy();
-
-  // сначала открываю хранилище и читаю данные, а потом уже запускаю
-  // приложение — так сообщение про сброс старых данных готово сразу
-  final prefs = await SharedPreferences.getInstance();
-  final notice = StorageNotice();
-  final store = LocalStore(prefs, notice);
-  final network = FakeNetwork();
-
-  final ShowRepository shows = PersistentShowRepository(network, store);
-  final TheatreRepository theatres = PersistentTheatreRepository(
-    network,
-    store,
-  );
-  final GenreRepository genres = PersistentGenreRepository(network, store);
-  final ActorRepository actors = PersistentActorRepository(network, store);
-  final SpectatorRepository spectators = PersistentSpectatorRepository(
-    network,
-    store,
-  );
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: network),
-        ChangeNotifierProvider.value(value: notice),
+        ChangeNotifierProvider(create: (_) => ApiTestMode()),
+        Provider<Dio>(
+          create: (context) => buildDio(testMode: context.read<ApiTestMode>()),
+        ),
         Provider(create: (_) => FormGuard()),
-        Provider.value(value: shows),
-        Provider.value(value: theatres),
-        Provider.value(value: genres),
-        Provider.value(value: actors),
-        Provider.value(value: spectators),
+        // Единственное место, где поменялась реализация: было
+        // Persistent…Repository (localStorage), стало Api…Repository.
+        // Экраны и формы получают те же интерфейсы и про сервер не знают
+        ProxyProvider<Dio, ShowRepository>(
+          update: (_, dio, _) => ApiShowRepository(dio),
+        ),
+        ProxyProvider<Dio, TheatreRepository>(
+          update: (_, dio, _) => ApiTheatreRepository(dio),
+        ),
+        ProxyProvider<Dio, GenreRepository>(
+          update: (_, dio, _) => ApiGenreRepository(dio),
+        ),
+        ProxyProvider<Dio, ActorRepository>(
+          update: (_, dio, _) => ApiActorRepository(dio),
+        ),
+        ProxyProvider<Dio, SpectatorRepository>(
+          update: (_, dio, _) => ApiSpectatorRepository(dio),
+        ),
+        ProxyProvider<Dio, BookingRepository>(
+          update: (_, dio, _) => ApiBookingRepository(dio),
+        ),
         ChangeNotifierProvider(
-          create: (_) => Catalog(theatres, genres, actors),
+          create: (context) => Catalog(
+            context.read<TheatreRepository>(),
+            context.read<GenreRepository>(),
+            context.read<ActorRepository>(),
+          ),
         ),
         // load() тут не вызываю: список грузит сам экран, когда прочитает
         // фильтры из адреса
         ChangeNotifierProvider(
-          create: (context) => ShowListNotifier(shows, context.read<Catalog>()),
+          create: (context) => ShowListNotifier(
+            context.read<ShowRepository>(),
+            context.read<Catalog>(),
+            context.read<SpectatorRepository>(),
+            context.read<BookingRepository>(),
+          ),
         ),
         ChangeNotifierProvider(
-          create: (_) => TheatreListNotifier(theatres, shows, actors),
+          create: (context) => TheatreListNotifier(
+            context.read<TheatreRepository>(),
+            context.read<Catalog>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ActorListNotifier(
+            context.read<ActorRepository>(),
+            context.read<Catalog>(),
+          ),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => GenreListNotifier(
+            context.read<GenreRepository>(),
+            context.read<Catalog>(),
+          ),
         ),
         ChangeNotifierProvider(
           create: (context) =>
-              ActorListNotifier(actors, shows, context.read<Catalog>()),
-        ),
-        ChangeNotifierProvider(create: (_) => GenreListNotifier(genres, shows)),
-        ChangeNotifierProvider(
-          create: (_) => SpectatorListNotifier(spectators),
+              SpectatorListNotifier(context.read<SpectatorRepository>()),
         ),
       ],
       child: const TheatreApp(),

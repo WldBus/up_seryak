@@ -7,6 +7,7 @@ import '../../models/show.dart';
 import '../../state/catalog.dart';
 import '../../state/show_list_notifier.dart';
 import '../../widgets/details_view.dart';
+import 'booking_dialog.dart';
 
 class ShowDetailsScreen extends StatelessWidget {
   final int? id;
@@ -24,6 +25,20 @@ class ShowDetailsScreen extends StatelessWidget {
       headingOf: (s) => s.title,
       editLocation: (s) => '/shows/${s.id}/edit',
       onDelete: (s) => notifier.softDelete(s.id),
+      extraActions: (s, reload) => [
+        FilledButton.tonalIcon(
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            if (!await showBookingDialog(context, s)) return;
+            messenger.showSnackBar(
+              const SnackBar(content: Text('Билеты забронированы')),
+            );
+            reload(); // свободных мест стало меньше
+          },
+          icon: const Icon(Icons.confirmation_number_outlined),
+          label: const Text('Забронировать'),
+        ),
+      ],
       fieldsOf: (s) => [
         ('Код', s.code),
         ('Театр', catalog.theatreName(s.theatreId)),

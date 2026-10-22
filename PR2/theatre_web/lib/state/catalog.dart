@@ -14,6 +14,10 @@ import '../repositories/theatre_repository.dart';
 ///
 /// Берутся из репозиториев, а не из констант: добавил жанр — и он сразу
 /// появился в форме спектакля.
+///
+/// С ПР4 это ещё и кэш: справочники запрашиваются с сервера один раз,
+/// а не при каждом открытии формы или списка. Заново — только когда
+/// театры, жанры или актёры поменялись (invalidate).
 class Catalog extends ChangeNotifier {
   final TheatreRepository _theatres;
   final GenreRepository _genres;
@@ -26,9 +30,16 @@ class Catalog extends ChangeNotifier {
   List<Actor> actors = const [];
   bool _loaded = false;
 
+  /// идущая загрузка: если форма и список попросили справочники
+  /// одновременно, запрос уходит один
+  Future<void>? _pending;
+
   bool get loaded => _loaded;
 
-  Future<void> refresh() async {
+  Future<void> refresh() =>
+      _pending ??= _load().whenComplete(() => _pending = null);
+
+  Future<void> _load() async {
     final results = await Future.wait([
       _theatres.findAll(),
       _genres.findAll(),
@@ -41,11 +52,15 @@ class Catalog extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// загрузить, если ещё не грузили — для карточек и форм,
-  /// которые открыли сразу по ссылке
+  /// загрузить, если ещё не грузили или кэш устарел. если загрузка
+  /// не удалась, _loaded остаётся false и в следующий раз будет повтор
   Future<void> ensureLoaded() async {
     if (!_loaded) await refresh();
   }
+
+  /// театры, жанры или актёры поменялись — при следующем обращении
+  /// справочники загрузятся заново. старые пока остаются на экране
+  void invalidate() => _loaded = false;
 
   // в формах можно выбрать только неудалённые записи, а названия
   // показываю и для удалённых — на них могли сослаться раньше

@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 
 import '../core/breakpoints.dart';
 import '../core/router.dart';
-import '../core/storage_notice.dart';
 import '../state/actor_list_notifier.dart';
 import '../state/genre_list_notifier.dart';
 import '../state/show_list_notifier.dart';
@@ -12,7 +11,6 @@ import '../state/spectator_list_notifier.dart';
 import '../state/theatre_list_notifier.dart';
 
 /// Общий каркас с меню: снизу на телефоне, сбоку на компьютере.
-/// Сверху может появиться полоса с сообщением про сохранённые данные.
 class AppScaffold extends StatelessWidget {
   final String location;
   final Widget child;
@@ -48,16 +46,10 @@ class AppScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = screenSizeOf(context);
-    final content = Column(
-      children: [
-        const _StorageBanner(),
-        Expanded(child: child),
-      ],
-    );
 
     if (size == ScreenSize.compact) {
       return Scaffold(
-        body: content,
+        body: child,
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: (i) => _select(context, i),
@@ -89,28 +81,9 @@ class AppScaffold extends StatelessWidget {
             ],
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: content),
+          Expanded(child: child),
         ],
       ),
-    );
-  }
-}
-
-/// Полоса с сообщением, что данные устарели или побились
-/// и загружен начальный набор.
-class _StorageBanner extends StatelessWidget {
-  const _StorageBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    final notice = context.watch<StorageNotice>();
-    if (notice.messages.isEmpty) return const SizedBox.shrink();
-    return MaterialBanner(
-      leading: const Icon(Icons.info_outline),
-      content: Text(notice.messages.join('\n')),
-      actions: [
-        TextButton(onPressed: notice.clear, child: const Text('Понятно')),
-      ],
     );
   }
 }

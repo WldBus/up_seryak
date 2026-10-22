@@ -24,7 +24,8 @@ class ActorFormScreen extends StatelessWidget {
       id: id,
       createTitle: 'Новый актёр',
       editTitle: 'Изменение актёра',
-      prepare: catalog.refresh,
+      // справочники из кэша: с сервера только в первый раз
+      prepare: catalog.ensureLoaded,
       load: notifier.findById,
       initialValues: (a) => {
         'lastName': a?.lastName ?? '',

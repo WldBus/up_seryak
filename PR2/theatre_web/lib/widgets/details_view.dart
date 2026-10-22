@@ -19,6 +19,10 @@ class DetailsView<T extends Entity> extends StatefulWidget {
   /// удаление в корзину (может не получиться, если есть связи)
   final Future<void> Function(T item)? onDelete;
 
+  /// свои кнопки карточки, например «Забронировать» у спектакля.
+  /// reload заново загружает запись (свободных мест стало меньше)
+  final List<Widget> Function(T item, VoidCallback reload)? extraActions;
+
   const DetailsView({
     super.key,
     required this.title,
@@ -28,6 +32,7 @@ class DetailsView<T extends Entity> extends StatefulWidget {
     required this.fieldsOf,
     this.editLocation,
     this.onDelete,
+    this.extraActions,
   });
 
   @override
@@ -38,6 +43,15 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
   // запрос создаю один раз, а не в build, иначе при каждой
   // перерисовке он бы запускался заново
   late Future<T?> _future = widget.load();
+
+  void _reload() {
+    if (!mounted) return;
+    // только фигурные скобки: стрелка вернула бы Future из присваивания,
+    // а setState такое не принимает и падает с ошибкой
+    setState(() {
+      _future = widget.load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +75,7 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
                   Text('Не удалось загрузить: ${snap.error}'),
                   const SizedBox(height: 8),
                   FilledButton(
-                    onPressed: () => setState(() => _future = widget.load()),
+                    onPressed: _reload,
                     child: const Text('Повторить'),
                   ),
                 ],
@@ -123,12 +137,16 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
                       ),
                     ),
                   if (!item.isDeleted &&
-                      (widget.editLocation != null || widget.onDelete != null))
+                      (widget.editLocation != null ||
+                          widget.onDelete != null ||
+                          widget.extraActions != null))
                     Padding(
                       padding: const EdgeInsets.only(top: 16),
                       child: Wrap(
                         spacing: 12,
+                        runSpacing: 12,
                         children: [
+                          ...?widget.extraActions?.call(item, _reload),
                           if (widget.editLocation != null)
                             FilledButton.icon(
                               onPressed: () =>

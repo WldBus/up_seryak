@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 
 import '../models/entity.dart';
 import '../repositories/entity_repository.dart';
-import '../repositories/exceptions.dart';
 import 'list_state.dart';
 
 /// Состояние любого списка: фильтры, загруженная страница и выбранные строки.
@@ -42,10 +41,10 @@ class EntityListNotifier<T extends Entity, Q> extends ChangeNotifier {
   @protected
   Future<void> beforeLoad() async {}
 
-  /// почему запись нельзя удалить (на неё ссылаются) или null, если можно.
-  /// по умолчанию удалять можно всё
+  /// вызывается после любого изменения данных: сохранение, удаление,
+  /// восстановление. театры, жанры и актёры сбрасывают тут кэш справочников
   @protected
-  Future<String?> deleteBlockReason(int id) async => null;
+  void afterChange() {}
 
   Future<void> load() async {
     // если пользователь уже поменял фильтры, ответ на старый запрос
@@ -68,12 +67,19 @@ class EntityListNotifier<T extends Entity, Q> extends ChangeNotifier {
 
   Future<T?> findById(int id) => repository.findById(id);
 
+  /// перезагрузить список, если его уже открывали (иначе загрузит экран)
+  @protected
+  Future<void> reloadIfStarted() async {
+    if (_started) await load();
+  }
+
   /// сохраняет запись из формы: id == 0 — новая, иначе редактирование.
   /// ValidationException тут не ловлю — форма сама покажет ошибки под полями
   Future<T> save(T item) async {
     final saved = item.id == 0
         ? await repository.create(item)
         : await repository.update(item);
+    afterChange();
     if (_started) await load();
     return saved;
   }
@@ -92,41 +98,36 @@ class EntityListNotifier<T extends Entity, Q> extends ChangeNotifier {
     _notify();
   }
 
+  // Связи перед удалением с ПР4 проверяет сервер: если на запись ссылаются,
+  // он отвечает 409, и сюда приходит ConflictException с текстом и числом
+  // связанных записей. bulk-delete при этом не удаляет вообще ничего.
+
   Future<int> deleteSelected() async {
-    // если хоть на одну выбранную запись кто-то ссылается — не удаляем
-    // вообще ничего и пишем почему, а то удалится только часть и будет непонятно
-    for (final id in _selected) {
-      final reason = await deleteBlockReason(id);
-      if (reason != null) throw DeleteBlockedException(reason);
-    }
     final count = await repository.deleteMany(_selected.toList());
     _selected.clear();
+    afterChange();
     await load();
     return count;
   }
 
   Future<void> softDelete(int id) async {
-    await _ensureCanDelete(id);
     await repository.softDelete(id);
     _selected.remove(id);
+    afterChange();
     if (_started) await load();
   }
 
   Future<void> hardDelete(int id) async {
-    await _ensureCanDelete(id);
     await repository.hardDelete(id);
     _selected.remove(id);
+    afterChange();
     if (_started) await load();
   }
 
   Future<void> restore(int id) async {
     await repository.restore(id);
+    afterChange();
     if (_started) await load();
-  }
-
-  Future<void> _ensureCanDelete(int id) async {
-    final reason = await deleteBlockReason(id);
-    if (reason != null) throw DeleteBlockedException(reason);
   }
 
   void _notify() {

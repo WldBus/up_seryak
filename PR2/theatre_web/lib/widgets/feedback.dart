@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../repositories/exceptions.dart';
+import '../core/api_exceptions.dart';
 
-/// Выполняет действие и показывает результат. Если удалить нельзя из-за
-/// связей, показываю диалог — сообщение длинное и важное, в снекбаре
-/// его легко не заметить.
+/// Выполняет действие и показывает результат. Если сервер ответил 409
+/// (на запись ссылаются или не хватает мест), показываю диалог — сообщение
+/// длинное и важное, в снекбаре его легко не заметить.
 Future<bool> runWithFeedback(
   BuildContext context,
   String done,
@@ -15,7 +15,7 @@ Future<bool> runWithFeedback(
     await action();
     messenger.showSnackBar(SnackBar(content: Text(done)));
     return true;
-  } on DeleteBlockedException catch (e) {
+  } on ConflictException catch (e) {
     if (context.mounted) await showBlockedDialog(context, e.message);
     return false;
   } catch (e) {
@@ -29,7 +29,7 @@ Future<void> showBlockedDialog(BuildContext context, String message) {
     context: context,
     builder: (context) => AlertDialog(
       icon: const Icon(Icons.link),
-      title: const Text('Удаление невозможно'),
+      title: const Text('Операция невозможна'),
       content: Text(message),
       actions: [
         FilledButton(
