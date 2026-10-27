@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../core/permissions.dart';
 import '../models/entity.dart';
 import '../state/auth_notifier.dart';
+import 'connection_banner.dart';
 import 'feedback.dart';
 import 'network_toggle.dart';
 
@@ -71,17 +72,20 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('Не удалось загрузить: ${snap.error}'),
-                  const SizedBox(height: 8),
-                  FilledButton(
-                    onPressed: _reload,
-                    child: const Text('Повторить'),
-                  ),
-                ],
+            return RetryOnReconnect(
+              onRetry: _reload,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Не удалось загрузить: ${snap.error}'),
+                    const SizedBox(height: 8),
+                    FilledButton(
+                      onPressed: _reload,
+                      child: const Text('Повторить'),
+                    ),
+                  ],
+                ),
               ),
             );
           }

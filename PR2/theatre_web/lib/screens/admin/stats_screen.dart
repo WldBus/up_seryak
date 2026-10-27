@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/format.dart';
 import '../../models/booking.dart';
 import '../../state/admin_notifier.dart';
+import '../../widgets/connection_banner.dart';
 
 /// «Статистика» — экран только для администратора.
 class StatsScreen extends StatefulWidget {
@@ -41,7 +42,17 @@ class _StatsScreenState extends State<StatsScreen> {
         ],
       ),
       body: admin.error != null
-          ? Center(child: Text(admin.error!))
+          ? RetryOnReconnect(
+              onRetry: admin.loadStats,
+              child: ListTile(
+                leading: const Icon(Icons.cloud_off),
+                title: Text(admin.error!),
+                trailing: TextButton(
+                  onPressed: admin.loadStats,
+                  child: const Text('Повторить'),
+                ),
+              ),
+            )
           : s == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(

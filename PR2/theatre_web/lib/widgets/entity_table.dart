@@ -59,6 +59,9 @@ class EntityTable<T> extends StatelessWidget {
     final muted = Theme.of(context).disabledColor;
 
     final table = DataTable(
+      // по умолчанию между колонками 56 px: у спектаклей 9 колонок, и на
+      // 1280 «Действия» уезжали за край
+      columnSpacing: 20,
       // стрелку у отсортированной колонки DataTable рисует сам
       sortColumnIndex: sortIndex == -1 ? null : sortIndex,
       sortAscending: sortAscending,
@@ -116,14 +119,20 @@ class EntityTable<T> extends StatelessWidget {
       cells: [
         for (final c in columns)
           DataCell(
-            DefaultTextStyle.merge(
-              style: disabled
-                  ? TextStyle(
-                      color: muted,
-                      decoration: TextDecoration.lineThrough,
-                    )
-                  : null,
-              child: c.build(item),
+            // длинный текст не раздувает колонку: не шире 320 и многоточие
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: DefaultTextStyle.merge(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: disabled
+                    ? TextStyle(
+                        color: muted,
+                        decoration: TextDecoration.lineThrough,
+                      )
+                    : null,
+                child: c.build(item),
+              ),
             ),
             onTap: onOpen == null ? null : () => onOpen!(item),
           ),

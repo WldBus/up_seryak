@@ -10,6 +10,10 @@
  *   node theatre-server.js --port 8080 --origin http://localhost:5555
  *   node theatre-server.js --port 8080 --origin http://localhost:5555 --auth
  *
+ * Источников можно указать несколько через запятую (ПР6: разработка,
+ * локальная релизная сборка и сайт на GitHub Pages):
+ *   --origin http://localhost:5555,http://localhost:8000,https://wldbus.github.io
+ *
  * Без --auth права не проверяются (так было в ПР4). В ПР5 сервер запускается
  * с --auth: вход по токену и права по ролям «Зритель», «Кассир», «Администратор».
  * Срок жизни токена доступа задаётся --ttl в секундах (по умолчанию 900).
@@ -37,6 +41,7 @@ function arg(name, fallback) {
 
 const PORT = Number(arg('port', 8080));
 const ORIGIN = arg('origin', '*');
+const ORIGINS = ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
 const AUTH = args.includes('--auth');
 const SECRET = 'учебный-ключ-не-для-продакшена';
 const ACCESS_TTL = Number(arg('ttl', 900)); // секунд
@@ -633,7 +638,13 @@ function saveCard(spectatorId, card) {
 // ──────────────────────────── HTTP-обвязка ────────────────────────────
 
 function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', ORIGIN);
+  // в заголовке может стоять только один источник, поэтому из списка
+  // возвращаю тот, с которого пришёл запрос (или первый из списка)
+  const origin = res.req && res.req.headers.origin;
+  const allowed = ORIGINS.includes('*')
+    ? '*'
+    : ORIGINS.includes(origin) ? origin : ORIGINS[0];
+  res.setHeader('Access-Control-Allow-Origin', allowed);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Max-Age', '86400');
@@ -1098,6 +1109,11 @@ const server = http.createServer(async (req, res) => {
   // не заработает ни PUT/DELETE, ни POST с JSON, ни запрос с Authorization.
   if (req.method === 'OPTIONS') {
     cors(res);
+    // страница с GitHub Pages (публичный адрес) обращается к localhost —
+    // Chrome перед этим спрашивает, разрешён ли доступ к локальной сети
+    if (req.headers['access-control-request-private-network']) {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
     res.writeHead(204);
     return res.end();
   }
@@ -1119,7 +1135,7 @@ server.listen(PORT, () => {
   console.log('');
   console.log('  API «Театральная касса»');
   console.log(`  Адрес:                http://localhost:${PORT}/api`);
-  console.log(`  Разрешённый источник: ${ORIGIN}`);
+  console.log(`  Разрешённые источники: ${ORIGINS.join(', ')}`);
   console.log(`  Проверка прав:        ${AUTH ? 'включена (--auth)' : 'выключена'}`);
   console.log(`  Токен доступа живёт:  ${ACCESS_TTL} с`);
   console.log('');

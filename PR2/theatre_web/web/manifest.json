@@ -1,11 +1,11 @@
 {
-    "name": "theatre_web",
-    "short_name": "theatre_web",
+    "name": "Театральная касса",
+    "short_name": "Театр",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#fff8f7",
+    "theme_color": "#8e1b2e",
+    "description": "Театральная касса: спектакли, театры и бронирование билетов",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

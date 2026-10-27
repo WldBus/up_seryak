@@ -9,7 +9,8 @@ import '../../state/auth_notifier.dart';
 import '../../state/catalog.dart';
 import '../../state/show_list_notifier.dart';
 import '../../widgets/details_view.dart';
-import 'booking_dialog.dart';
+// окно брони нужно только кассиру — грузится отдельно, при первом открытии
+import 'booking_dialog.dart' deferred as booking;
 
 class ShowDetailsScreen extends StatelessWidget {
   final int? id;
@@ -34,7 +35,9 @@ class ShowDetailsScreen extends StatelessWidget {
           FilledButton.tonalIcon(
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
-              if (!await showBookingDialog(context, s)) return;
+              await booking.loadLibrary();
+              if (!context.mounted) return;
+              if (!await booking.showBookingDialog(context, s)) return;
               messenger.showSnackBar(
                 const SnackBar(content: Text('Билеты забронированы')),
               );

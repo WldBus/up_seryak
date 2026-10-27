@@ -1,46 +1,82 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    Базовый путь. Подставляется при сборке ключом --base-href, например
+    flutter build web --release --base-href /up_seryak/ для GitHub Pages.
+    Косые черты с обеих сторон обязательны.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Театральная касса: спектакли, театры и бронирование билетов">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="theatre_web">
+  <meta name="apple-mobile-web-app-title" content="Театральная касса">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>theatre_web</title>
+  <title>Театральная касса</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Заставка (ПР6). Пока качаются main.dart.js и движок отрисовки (несколько
+    мегабайт), вместо белого экрана видно название и индикатор. Стили прямо
+    здесь, а не отдельным файлом: заставка должна появиться сразу, без
+    лишних запросов.
+  -->
+  <style>
+    html, body { margin: 0; height: 100%; background: #fff8f7; }
+    #splash {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+      font-family: Roboto, "Segoe UI", Arial, sans-serif;
+      color: #8e1b2e;
+      transition: opacity .3s;
+    }
+    #splash h1 { margin: 0; font-size: 28px; font-weight: 500; }
+    #splash p { margin: 0; color: #6f5d5f; font-size: 14px; }
+    #splash .spinner {
+      width: 40px; height: 40px;
+      border: 4px solid #f3d7da; border-top-color: #8e1b2e;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* кто отключил анимации в системе — тому без вращения */
+    @media (prefers-reduced-motion: reduce) {
+      #splash .spinner { animation: none; }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <div id="splash" role="status" aria-live="polite">
+    <h1>Театральная касса</h1>
+    <div class="spinner"></div>
+    <p>Загрузка приложения…</p>
+  </div>
+  <noscript>Для работы приложения нужен JavaScript.</noscript>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <script>
+    // Flutter сообщает о первом нарисованном кадре событием flutter-first-frame,
+    // тогда заставку плавно убираю. Заодно пишу в консоль, через сколько
+    // миллисекунд после открытия страницы он появился (замеры в отчёте)
+    window.addEventListener('flutter-first-frame', function () {
+      window.firstFrameMs = Math.round(performance.now());
+      console.log('Первый кадр через ' + window.firstFrameMs + ' мс');
+      var splash = document.getElementById('splash');
+      if (!splash) return;
+      splash.style.opacity = '0';
+      setTimeout(function () { splash.remove(); }, 300);
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -10,6 +10,7 @@ import '../state/auth_notifier.dart';
 import '../state/entity_list_notifier.dart';
 import '../state/list_state.dart';
 import 'entity_table.dart';
+import 'connection_banner.dart';
 import 'feedback.dart';
 import 'pager_bar.dart';
 
@@ -63,7 +64,7 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
       children: [
         // на узком окне прячу фильтры в раскрывающуюся панель, а то для списка
         // не остаётся места. открыта она или нет, помнит сам ExpansionTile
-        if (MediaQuery.sizeOf(context).width < tableBreakpoint)
+        if (screenSizeOf(context) == ScreenSize.compact)
           ExpansionTile(
             leading: const Icon(Icons.tune),
             title: Text(hasFilters ? 'Фильтры (заданы)' : 'Поиск и фильтры'),
@@ -114,9 +115,22 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     final hasActions = canSelect || onEdit != null;
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth < tableBreakpoint) {
+        if (constraints.maxWidth < cardsBreakpoint) {
           return ListView.builder(
             padding: const EdgeInsets.all(8),
+            itemCount: page.items.length,
+            itemBuilder: (context, i) =>
+                _card(context, notifier, page.items[i], role),
+          );
+        }
+        // планшет: те же карточки, но в две колонки
+        if (constraints.maxWidth < tableBreakpoint) {
+          return GridView.builder(
+            padding: const EdgeInsets.all(8),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisExtent: 80,
+            ),
             itemCount: page.items.length,
             itemBuilder: (context, i) =>
                 _card(context, notifier, page.items[i], role),
@@ -134,7 +148,13 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
           sortField: sortField,
           sortAscending: sortAscending,
           onSort: onSort,
-          actions: hasActions ? (e) => _actions(context, e, role) : null,
+          // на 1280 три значка в строке не помещались — до 1200 px
+          // доступной ширины кнопки свёрнуты в меню, как на карточке
+          actions: !hasActions
+              ? null
+              : constraints.maxWidth < 1200
+              ? (e) => [_menu(context, e, role)]
+              : (e) => _actions(context, e, role),
         );
       },
     );
@@ -154,14 +174,19 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
                     : (_) => notifier.toggleSelection(item.id),
               )
             : null,
+        // длинное название обрезаю многоточием, иначе оно раздвигает карточку
         title: Text(
           titleOf(item),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: deleted
               ? const TextStyle(decoration: TextDecoration.lineThrough)
               : null,
         ),
         subtitle: Text(
           deleted ? 'Удалено · ${subtitleOf(item)}' : subtitleOf(item),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
         trailing: canSelect || onEdit != null
             ? _menu(context, item, role)
@@ -354,26 +379,30 @@ class _ErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off, size: 56, color: scheme.error),
-            const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: scheme.error),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Повторить'),
-            ),
-          ],
+    // связь вернулась — повторяю загрузку сам, без нажатия на кнопку
+    return RetryOnReconnect(
+      onRetry: onRetry,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.cloud_off, size: 56, color: scheme.error),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: scheme.error),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Повторить'),
+              ),
+            ],
+          ),
         ),
       ),
     );

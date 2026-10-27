@@ -120,7 +120,18 @@ class AppScaffold extends StatelessWidget {
     final content = Column(
       children: [
         const _UserBar(),
-        Expanded(child: child),
+        // на мониторе 1920 экран не растягиваю: по бокам просто поля
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final side = (constraints.maxWidth - maxContentWidth) / 2;
+              return Padding(
+                padding: EdgeInsets.symmetric(horizontal: side > 0 ? side : 0),
+                child: child,
+              );
+            },
+          ),
+        ),
       ],
     );
 
@@ -130,7 +141,12 @@ class AppScaffold extends StatelessWidget {
         bottomNavigationBar: NavigationBar(
           selectedIndex: index ?? 0,
           onDestinationSelected: (i) => _select(context, sections[i].path),
-          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+          // у админа 8 разделов: на 360 px подпись даже у выбранного рвалась
+          // на две строки. тогда только значки, подпись — во всплывающей
+          // подсказке (NavigationDestination ставит её сам)
+          labelBehavior: sections.length > 5
+              ? NavigationDestinationLabelBehavior.alwaysHide
+              : NavigationDestinationLabelBehavior.onlyShowSelected,
           destinations: [
             for (final s in sections)
               NavigationDestination(icon: Icon(s.icon), label: s.label),
@@ -139,27 +155,47 @@ class AppScaffold extends StatelessWidget {
       );
     }
 
+    // порядок Tab: фокус начинается на экране (поиск, фильтры, таблица,
+    // страницы), потом переходит в меню слева и затем к «Выйти». без явного
+    // порядка меню и строка пользователя шли бы вперемешку по высоте:
+    // пункт меню, кнопка «Выйти», снова пункт меню
     return Scaffold(
-      body: Row(
-        children: [
-          NavigationRail(
-            selectedIndex: index,
-            onDestinationSelected: (i) => _select(context, sections[i].path),
-            extended: size == ScreenSize.expanded,
-            labelType: size == ScreenSize.expanded
-                ? NavigationRailLabelType.none
-                : NavigationRailLabelType.all,
-            destinations: [
-              for (final s in sections)
-                NavigationRailDestination(
-                  icon: Icon(s.icon),
-                  label: Text(s.label),
+      body: FocusTraversalGroup(
+        policy: OrderedTraversalPolicy(),
+        child: Row(
+          children: [
+            FocusTraversalOrder(
+              order: const NumericFocusOrder(1),
+              child: FocusTraversalGroup(
+                child: NavigationRail(
+                  selectedIndex: index,
+                  onDestinationSelected: (i) =>
+                      _select(context, sections[i].path),
+                  extended: size == ScreenSize.expanded,
+                  // по умолчанию раскрытое меню 256 px — на 1280 таблице тесно
+                  minExtendedWidth: 200,
+                  labelType: size == ScreenSize.expanded
+                      ? NavigationRailLabelType.none
+                      : NavigationRailLabelType.all,
+                  destinations: [
+                    for (final s in sections)
+                      NavigationRailDestination(
+                        icon: Icon(s.icon),
+                        label: Text(s.label),
+                      ),
+                  ],
                 ),
-            ],
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: content),
-        ],
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: FocusTraversalOrder(
+                order: const NumericFocusOrder(2),
+                child: FocusTraversalGroup(child: content),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,0 +1,76 @@
+# Сборка и публикация клиента «Театральная касса» на GitHub Pages (ПР6).
+#
+# Запускается при каждом изменении ветки main (и вручную во вкладке Actions).
+# Сначала анализатор, формат и тесты — сломанный код до сайта не доедет.
+#
+# Перед первым запуском: Settings → Pages → Source → GitHub Actions.
+# Адрес сайта: https://<логин>.github.io/<имя репозитория>/
+
+name: Сборка и публикация
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# два запуска подряд не публикуют одновременно
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # проект лежит не в корне репозитория, а в подпапке
+    defaults:
+      run:
+        working-directory: PR2/theatre_web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.3'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: dart format --set-exit-if-changed lib test
+      - run: flutter test
+
+      # --base-href: сайт живёт не в корне домена, а в подпапке с именем
+      #   репозитория, без него — белый экран и 404 на main.dart.js;
+      # API_BASE_URL: адрес сервера задаётся при сборке. Переменная
+      #   репозитория (Settings → Variables), если её нет — локальный сервер;
+      # --wasm: две сборки сразу, браузер без WasmGC возьмёт JavaScript.
+      - name: Сборка
+        run: >
+          flutter build web --release --wasm
+          --base-href "/${{ github.event.repository.name }}/"
+          --dart-define=API_BASE_URL=${{ vars.API_BASE_URL || 'http://localhost:8080/api' }}
+
+      # Pages не умеет отдавать index.html на неизвестный адрес, зато отдаёт
+      # 404.html. Копия index.html под этим именем — и прямая ссылка
+      # /up_seryak/shows/3 открывает приложение, а роутер — нужный экран
+      - name: Страница для прямых ссылок
+        run: cp build/web/index.html build/web/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: PR2/theatre_web/build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

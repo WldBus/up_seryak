@@ -6,6 +6,7 @@ import '../../models/booking.dart';
 import '../../state/auth_notifier.dart';
 import '../../state/bookings_notifier.dart';
 import '../../state/list_state.dart';
+import '../../widgets/connection_banner.dart';
 import '../../widgets/feedback.dart';
 import 'booking_tile.dart';
 
@@ -76,12 +77,15 @@ class _MyBookingsScreenState extends State<MyBookingsScreen> {
               ),
             ],
             ListFailed(message: final m) => [
-              ListTile(
-                leading: const Icon(Icons.cloud_off),
-                title: Text(m),
-                trailing: TextButton(
-                  onPressed: notifier.load,
-                  child: const Text('Повторить'),
+              RetryOnReconnect(
+                onRetry: notifier.load,
+                child: ListTile(
+                  leading: const Icon(Icons.cloud_off),
+                  title: Text(m),
+                  trailing: TextButton(
+                    onPressed: notifier.load,
+                    child: const Text('Повторить'),
+                  ),
                 ),
               ),
             ],

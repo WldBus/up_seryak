@@ -9,34 +9,40 @@ import '../models/show_query.dart';
 import '../models/spectator.dart';
 import '../models/theatre.dart';
 import '../screens/actors/actor_details_screen.dart';
-import '../screens/actors/actor_form_screen.dart';
 import '../screens/actors/actor_list_screen.dart';
 import '../screens/genres/genre_details_screen.dart';
-import '../screens/genres/genre_form_screen.dart';
 import '../screens/genres/genre_list_screen.dart';
 import '../screens/not_found_screen.dart';
 import '../screens/shows/show_details_screen.dart';
-import '../screens/shows/show_form_screen.dart';
 import '../screens/shows/show_list_screen.dart';
 import '../screens/spectators/spectator_details_screen.dart';
-import '../screens/spectators/spectator_form_screen.dart';
 import '../screens/spectators/spectator_list_screen.dart';
 import '../screens/theatres/theatre_details_screen.dart';
-import '../screens/theatres/theatre_form_screen.dart';
 import '../screens/theatres/theatre_list_screen.dart';
 import '../models/app_user.dart';
-import '../screens/admin/stats_screen.dart';
-import '../screens/admin/users_screen.dart';
 import '../screens/auth/login_screen.dart';
 import '../screens/auth/register_screen.dart';
-import '../screens/bookings/cash_desk_screen.dart';
 import '../screens/bookings/my_bookings_screen.dart';
 import '../screens/forbidden_screen.dart';
 import '../screens/home_screen.dart';
 import '../state/auth_notifier.dart';
 import '../widgets/app_scaffold.dart';
+import '../widgets/deferred_screen.dart';
 import 'form_guard.dart';
 import 'permissions.dart';
+
+// Редкие разделы — отложенная загрузка (ПР6): формы нужны только
+// администратору, касса — кассиру, пользователи и статистика — админу.
+// Их код собирается в отдельные файлы и скачивается при первом открытии.
+import '../screens/actors/actor_form_screen.dart' deferred as actor_form;
+import '../screens/admin/stats_screen.dart' deferred as stats;
+import '../screens/admin/users_screen.dart' deferred as users;
+import '../screens/bookings/cash_desk_screen.dart' deferred as cash_desk;
+import '../screens/genres/genre_form_screen.dart' deferred as genre_form;
+import '../screens/shows/show_form_screen.dart' deferred as show_form;
+import '../screens/spectators/spectator_form_screen.dart'
+    deferred as spectator_form;
+import '../screens/theatres/theatre_form_screen.dart' deferred as theatre_form;
 
 /// Собирает адрес списка вместе с фильтрами, например /shows?search=…&sort=date,desc
 String listLocation(String path, Map<String, String> params) =>
@@ -167,7 +173,10 @@ GoRouter buildRouter(AuthNotifier auth) {
             path: '/shows',
             list: (p) => ShowListScreen(query: ShowQuery.fromParams(p)),
             details: (id) => ShowDetailsScreen(id: id),
-            form: (id) => ShowFormScreen(id: id),
+            form: (id) => DeferredScreen(
+              load: show_form.loadLibrary,
+              builder: () => show_form.ShowFormScreen(id: id),
+            ),
             canRead: canViewCatalog,
             canEdit: canEditCatalog,
           ),
@@ -177,7 +186,10 @@ GoRouter buildRouter(AuthNotifier auth) {
               query: ListQuery.fromParams(p, sortFields: Theatre.sortFields),
             ),
             details: (id) => TheatreDetailsScreen(id: id),
-            form: (id) => TheatreFormScreen(id: id),
+            form: (id) => DeferredScreen(
+              load: theatre_form.loadLibrary,
+              builder: () => theatre_form.TheatreFormScreen(id: id),
+            ),
             canRead: canViewCatalog,
             canEdit: canEditCatalog,
           ),
@@ -187,7 +199,10 @@ GoRouter buildRouter(AuthNotifier auth) {
               query: ListQuery.fromParams(p, sortFields: Actor.sortFields),
             ),
             details: (id) => ActorDetailsScreen(id: id),
-            form: (id) => ActorFormScreen(id: id),
+            form: (id) => DeferredScreen(
+              load: actor_form.loadLibrary,
+              builder: () => actor_form.ActorFormScreen(id: id),
+            ),
             canRead: canViewCatalog,
             canEdit: canEditCatalog,
           ),
@@ -197,7 +212,10 @@ GoRouter buildRouter(AuthNotifier auth) {
               query: ListQuery.fromParams(p, sortFields: Genre.sortFields),
             ),
             details: (id) => GenreDetailsScreen(id: id),
-            form: (id) => GenreFormScreen(id: id),
+            form: (id) => DeferredScreen(
+              load: genre_form.loadLibrary,
+              builder: () => genre_form.GenreFormScreen(id: id),
+            ),
             canRead: canViewCatalog,
             canEdit: canEditCatalog,
           ),
@@ -207,7 +225,10 @@ GoRouter buildRouter(AuthNotifier auth) {
               query: ListQuery.fromParams(p, sortFields: Spectator.sortFields),
             ),
             details: (id) => SpectatorDetailsScreen(id: id),
-            form: (id) => SpectatorFormScreen(id: id),
+            form: (id) => DeferredScreen(
+              load: spectator_form.loadLibrary,
+              builder: () => spectator_form.SpectatorFormScreen(id: id),
+            ),
             canRead: canManageSpectators,
             canEdit: canManageSpectators,
           ),
@@ -220,17 +241,26 @@ GoRouter buildRouter(AuthNotifier auth) {
           GoRoute(
             path: '/cash-desk',
             redirect: only(canUseCashDesk),
-            builder: (context, state) => const CashDeskScreen(),
+            builder: (context, state) => DeferredScreen(
+              load: cash_desk.loadLibrary,
+              builder: () => cash_desk.CashDeskScreen(),
+            ),
           ),
           GoRoute(
             path: '/users',
             redirect: only(canManageUsers),
-            builder: (context, state) => const UsersScreen(),
+            builder: (context, state) => DeferredScreen(
+              load: users.loadLibrary,
+              builder: () => users.UsersScreen(),
+            ),
           ),
           GoRoute(
             path: '/stats',
             redirect: only(canSeeStats),
-            builder: (context, state) => const StatsScreen(),
+            builder: (context, state) => DeferredScreen(
+              load: stats.loadLibrary,
+              builder: () => stats.StatsScreen(),
+            ),
           ),
         ],
       ),

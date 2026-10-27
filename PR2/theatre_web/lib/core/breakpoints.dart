@@ -10,5 +10,13 @@ ScreenSize screenSizeOf(BuildContext context) {
   return ScreenSize.expanded;
 }
 
-/// Уже 600 px показываю карточки, шире — таблицу.
-const tableBreakpoint = 600.0;
+/// Уже 600 px — карточки в одну колонку.
+const cardsBreakpoint = 600.0;
+
+/// От 600 до 900 px таблице ещё тесно — карточки в две колонки,
+/// с 900 px — таблица (ПР6: 768 — сетка, 1280 — таблица).
+const tableBreakpoint = 900.0;
+
+/// Шире этого содержимое не растягиваю: на мониторе 1920 строка таблицы
+/// иначе читается через весь экран.
+const maxContentWidth = 1400.0;

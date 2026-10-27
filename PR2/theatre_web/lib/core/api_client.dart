@@ -3,17 +3,19 @@ import 'package:flutter/foundation.dart';
 
 import 'api_exceptions.dart';
 import 'api_test_mode.dart';
+import 'connection_status.dart';
 import 'config.dart';
 
 /// Настроенный Dio для всего приложения: адрес, таймауты, общая обработка
 /// ошибок, журнал запросов, токен в каждом запросе, обновление токена
-/// при 401 и повтор чтения при сбое сети.
+/// при 401, повтор чтения при сбое сети и отметка, есть ли связь.
 Dio buildDio({
   String baseUrl = apiBaseUrl,
   String? Function()? tokenProvider,
   // обновить токен; true — получилось и запрос можно повторить
   Future<bool> Function()? onUnauthorized,
   ApiTestMode? testMode,
+  ConnectionStatus? connection,
   Duration retryDelay = const Duration(milliseconds: 500),
   // журнал пишу только в режиме отладки, в тестах его можно выключить
   bool log = kDebugMode,
@@ -48,6 +50,8 @@ Dio buildDio({
         return handler.next(options);
       },
       onResponse: (response, handler) {
+        // любой ответ, даже 4xx, значит, что сервер жив
+        connection?.reportSuccess();
         write(response.requestOptions, '${response.statusCode}');
         final status = response.statusCode ?? 0;
         if (status >= 400) {
@@ -67,6 +71,10 @@ Dio buildDio({
         return handler.next(response);
       },
       onError: (error, handler) {
+        // о сбое сети сообщаю сразу, на первой же попытке: на Windows отказ
+        // соединения приходит секунд через 8, и с повторами человек смотрел
+        // бы на индикатор полминуты, не понимая, что сервер недоступен
+        if (isNetworkFailure(error)) connection?.reportFailure();
         // сюда попадают сбои сети, таймауты, 5xx и отклонённые выше 4xx
         // (4xx уже записаны в журнал в onResponse)
         if (error.error is! ApiException) {
@@ -112,12 +120,7 @@ class RetryInterceptor extends Interceptor {
   ) async {
     final options = err.requestOptions;
     final attempt = (options.extra['retry'] as int?) ?? 0;
-    final networkFailure = switch (err.type) {
-      DioExceptionType.connectionError ||
-      DioExceptionType.connectionTimeout ||
-      DioExceptionType.receiveTimeout => true,
-      _ => false,
-    };
+    final networkFailure = isNetworkFailure(err);
     final cancelled = options.cancelToken?.isCancelled ?? false;
 
     if (options.method != 'GET' ||

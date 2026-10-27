@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/breakpoints.dart';
 import '../../models/app_user.dart';
 import '../../state/admin_notifier.dart';
 import '../../state/auth_notifier.dart';
+import '../../widgets/connection_banner.dart';
 import '../../widgets/debounced_field.dart';
 import '../../widgets/feedback.dart';
 
@@ -51,12 +53,15 @@ class _UsersScreenState extends State<UsersScreen> {
           ),
           const SizedBox(height: 12),
           if (admin.error != null)
-            ListTile(
-              leading: const Icon(Icons.cloud_off),
-              title: Text(admin.error!),
-              trailing: TextButton(
-                onPressed: () => admin.loadUsers(search: _search),
-                child: const Text('Повторить'),
+            RetryOnReconnect(
+              onRetry: () => admin.loadUsers(search: _search),
+              child: ListTile(
+                leading: const Icon(Icons.cloud_off),
+                title: Text(admin.error!),
+                trailing: TextButton(
+                  onPressed: () => admin.loadUsers(search: _search),
+                  child: const Text('Повторить'),
+                ),
               ),
             )
           else if (users == null)
@@ -68,35 +73,7 @@ class _UsersScreenState extends State<UsersScreen> {
             Card(
               child: Column(
                 children: [
-                  for (final u in users)
-                    ListTile(
-                      leading: CircleAvatar(
-                        child: Text(u.fullName.isEmpty ? '?' : u.fullName[0]),
-                      ),
-                      title: Text(
-                        u.id == me?.id ? '${u.fullName} (это вы)' : u.fullName,
-                      ),
-                      subtitle: Text('${u.username} · ${u.email}'),
-                      trailing: DropdownButton<Role>(
-                        value: u.role,
-                        // свою роль сменить нельзя — иначе можно остаться
-                        // без администратора. сервер тоже не даст (409)
-                        onChanged: u.id == me?.id
-                            ? null
-                            : (role) {
-                                if (role == null || role == u.role) return;
-                                runWithFeedback(
-                                  context,
-                                  '${u.fullName}: роль «${role.label}»',
-                                  () => admin.setRole(u, role),
-                                );
-                              },
-                        items: [
-                          for (final r in Role.values)
-                            DropdownMenuItem(value: r, child: Text(r.label)),
-                        ],
-                      ),
-                    ),
+                  for (final u in users) _userTile(context, admin, u, me),
                 ],
               ),
             ),
@@ -108,6 +85,58 @@ class _UsersScreenState extends State<UsersScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _userTile(
+    BuildContext context,
+    AdminNotifier admin,
+    AppUser u,
+    AppUser? me,
+  ) {
+    final role = DropdownButton<Role>(
+      value: u.role,
+      // свою роль сменить нельзя — иначе можно остаться
+      // без администратора. сервер тоже не даст (409)
+      onChanged: u.id == me?.id
+          ? null
+          : (role) {
+              if (role == null || role == u.role) return;
+              runWithFeedback(
+                context,
+                '${u.fullName}: роль «${role.label}»',
+                () => admin.setRole(u, role),
+              );
+            },
+      items: [
+        for (final r in Role.values)
+          DropdownMenuItem(value: r, child: Text(r.label)),
+      ],
+    );
+    // на телефоне список ролей справа сжимал имя в столбик по одной букве,
+    // поэтому там он переезжает под почту
+    final narrow = screenSizeOf(context) == ScreenSize.compact;
+    final info = Text(
+      '${u.username} · ${u.email}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+    return ListTile(
+      leading: CircleAvatar(
+        child: Text(u.fullName.isEmpty ? '?' : u.fullName[0]),
+      ),
+      title: Text(
+        u.id == me?.id ? '${u.fullName} (это вы)' : u.fullName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [info, role],
+            )
+          : info,
+      trailing: narrow ? null : role,
     );
   }
 }

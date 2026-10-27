@@ -91,13 +91,14 @@ class HomeScreen extends StatelessWidget {
             style: theme.textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Chip(
                 avatar: const Icon(Icons.verified_user, size: 18),
                 label: Text(user.role.label),
               ),
-              const SizedBox(width: 8),
               Text(
                 'вход: ${user.username}',
                 style: TextStyle(color: theme.hintColor),
