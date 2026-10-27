@@ -9,6 +9,9 @@ String formatDate(DateTime d) => '${_two(d.day)}.${_two(d.month)}.${d.year}';
 String formatDateTime(DateTime d) =>
     '${_two(d.day)}.${_two(d.month)}.${d.year} ${_two(d.hour)}:${_two(d.minute)}';
 
+/// только время: 19:05
+String formatTime(DateTime d) => '${_two(d.hour)}:${_two(d.minute)}';
+
 /// Цена вида 6 500 ₽. Пробел неразрывный, чтобы цена не разъезжалась
 /// на две строки.
 String formatPrice(int rub) {

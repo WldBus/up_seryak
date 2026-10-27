@@ -6,10 +6,13 @@ import 'api_test_mode.dart';
 import 'config.dart';
 
 /// Настроенный Dio для всего приложения: адрес, таймауты, общая обработка
-/// ошибок, журнал запросов и повтор чтения при сбое сети.
+/// ошибок, журнал запросов, токен в каждом запросе, обновление токена
+/// при 401 и повтор чтения при сбое сети.
 Dio buildDio({
   String baseUrl = apiBaseUrl,
   String? Function()? tokenProvider,
+  // обновить токен; true — получилось и запрос можно повторить
+  Future<bool> Function()? onUnauthorized,
   ApiTestMode? testMode,
   Duration retryDelay = const Duration(milliseconds: 500),
   // журнал пишу только в режиме отладки, в тестах его можно выключить
@@ -33,7 +36,8 @@ Dio buildDio({
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
-        // токена пока нет, вход будет в ПР5
+        // заголовок ставлю здесь, перед каждым запросом: так в него всегда
+        // попадает текущий токен, в том числе только что обновлённый
         final token = tokenProvider?.call();
         if (token != null) options.headers['Authorization'] = 'Bearer $token';
         final extra = testMode?.queryParameters ?? const {};
@@ -73,6 +77,9 @@ Dio buildDio({
       },
     ),
   );
+  if (onUnauthorized != null) {
+    dio.interceptors.add(RefreshInterceptor(dio, onUnauthorized, log: log));
+  }
   dio.interceptors.add(RetryInterceptor(dio, baseDelay: retryDelay, log: log));
   return dio;
 }
@@ -127,6 +134,45 @@ class RetryInterceptor extends Interceptor {
     }
     options.extra['retry'] = attempt + 1;
     try {
+      return handler.resolve(await dio.fetch(options));
+    } on DioException catch (e) {
+      return handler.next(e);
+    }
+  }
+}
+
+/// Токен истёк прямо во время работы: сервер ответил 401. Молча обновляю
+/// токен и повторяю тот же запрос — пользователь ничего не замечает.
+///
+/// Чтобы не было бесконечного цикла:
+/// * для адресов /auth/ обновления нет: неверный пароль — тоже 401, и без
+///   этого условия вход запускал бы обновление, а оно снова 401;
+/// * каждый запрос повторяется не больше одного раза (метка в extra);
+/// * если обновить не удалось, AuthNotifier выходит из системы, а ошибка
+///   уходит дальше как обычная.
+class RefreshInterceptor extends Interceptor {
+  final Dio dio;
+  final Future<bool> Function() refresh;
+  final bool log;
+
+  RefreshInterceptor(this.dio, this.refresh, {this.log = kDebugMode});
+
+  @override
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
+    final options = err.requestOptions;
+    if (err.response?.statusCode != 401 ||
+        options.path.contains('/auth/') ||
+        options.extra['authRetried'] == true) {
+      return handler.next(err);
+    }
+    if (log) debugPrint('[API] 401 — обновляю токен: ${options.uri}');
+    if (!await refresh()) return handler.next(err);
+    options.extra['authRetried'] = true;
+    try {
+      // onRequest подставит уже новый токен
       return handler.resolve(await dio.fetch(options));
     } on DioException catch (e) {
       return handler.next(e);

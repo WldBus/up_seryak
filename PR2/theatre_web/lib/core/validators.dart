@@ -73,6 +73,28 @@ class V {
     return (value) => re.hasMatch(value?.trim() ?? '') ? null : message;
   }
 
+  /// правила пароля при регистрации: текст правила и проверка.
+  /// по ним же рисуется список с галочками под полем пароля
+  static final passwordRules = <(String, bool Function(String))>[
+    ('Не короче 8 символов', (p) => p.length >= 8),
+    ('Есть цифра', (p) => RegExp(r'\d').hasMatch(p)),
+    (
+      'Есть спецсимвол (!, @, #, % и т. п.)',
+      (p) => RegExp(r'[^A-Za-zА-Яа-яЁё0-9]').hasMatch(p),
+    ),
+  ];
+
+  /// надёжный пароль: все правила из passwordRules. сервер проверяет то же
+  static Validator strongPassword() {
+    return (value) {
+      final p = value ?? '';
+      for (final (text, ok) in passwordRules) {
+        if (!ok(p)) return 'Пароль: ${text.toLowerCase()}';
+      }
+      return null;
+    };
+  }
+
   /// несколько проверок подряд, возвращается первая ошибка
   static Validator combine(List<Validator> validators) {
     return (value) {

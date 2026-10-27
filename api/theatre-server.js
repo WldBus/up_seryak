@@ -10,7 +10,9 @@
  *   node theatre-server.js --port 8080 --origin http://localhost:5555
  *   node theatre-server.js --port 8080 --origin http://localhost:5555 --auth
  *
- * Без --auth права не проверяются (так в ПР4, вход появится в ПР5).
+ * Без --auth права не проверяются (так было в ПР4). В ПР5 сервер запускается
+ * с --auth: вход по токену и права по ролям «Зритель», «Кассир», «Администратор».
+ * Срок жизни токена доступа задаётся --ttl в секундах (по умолчанию 900).
  *
  * Данные хранятся в памяти и сбрасываются при перезапуске
  * либо запросом POST /api/__reset
@@ -188,13 +190,44 @@ function seed() {
     push('cards', { spectatorId, number, issuedAt: issuedAt + 'T00:00:00', discount });
   }
 
-  // пара броней, чтобы список не был пустым
-  push('bookings', { spectatorId: 1, showId: 2, seats: 2 });
-  push('bookings', { spectatorId: 2, showId: 6, seats: 1 });
+  // брони держатся HOLD_DAYS дней, потом сгорают. зритель может один раз
+  // продлить свою бронь, кассир закрывает её: выкуплена или отменена
+  const B = (spectatorId, showId, seats, status, daysLeft, extended = false) =>
+    push('bookings', {
+      spectatorId,
+      showId,
+      seats,
+      status,
+      extended,
+      expiresAt: new Date(Date.now() + daysLeft * DAY).toISOString(),
+      closedAt: status === 'active' ? null : new Date().toISOString(),
+    });
+  B(1, 2, 2, 'active', 2);
+  B(1, 6, 1, 'active', 1, true);
+  B(1, 1, 2, 'paid', 0);
+  B(2, 6, 1, 'active', 3);
+  B(3, 5, 4, 'cancelled', 0);
 
-  push('users', { username: 'admin', passwordHash: hash('admin123'), fullName: 'Администратор', role: 'admin' });
-  push('users', { username: 'cashier', passwordHash: hash('cashier123'), fullName: 'Кассир Петрова А. С.', role: 'cashier' });
-  push('users', { username: 'viewer', passwordHash: hash('viewer123'), fullName: 'Зритель Иванов С.', role: 'viewer' });
+  // у зрителя-пользователя есть карточка зрителя — по ней видны его брони
+  push('users', { username: 'admin', passwordHash: hash('admin123'), fullName: 'Администратор', email: 'admin@theatre.local', role: 'admin', spectatorId: null });
+  push('users', { username: 'cashier', passwordHash: hash('cashier123'), fullName: 'Петрова А. С.', email: 'cashier@theatre.local', role: 'cashier', spectatorId: null });
+  push('users', { username: 'viewer', passwordHash: hash('viewer123'), fullName: 'Иванов Сергей', email: 'ivanov@mail.ru', role: 'viewer', spectatorId: 1 });
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+const HOLD_DAYS = 3;
+
+// брони, у которых истёк срок, сгорают, а места возвращаются в продажу
+function expireBookings() {
+  const now = Date.now();
+  for (const b of db.bookings) {
+    if (b.status === 'active' && Date.parse(b.expiresAt) < now) {
+      b.status = 'expired';
+      b.closedAt = new Date().toISOString();
+      const show = byId('shows', b.showId);
+      if (show) show.seatsAvailable = Math.min(show.seatsTotal, show.seatsAvailable + b.seats);
+    }
+  }
 }
 
 function push(collection, obj) {
@@ -263,15 +296,27 @@ function expandBooking(b) {
   return {
     id: b.id,
     spectator: spectator ? { id: spectator.id, fullName: fullName(spectator) } : null,
-    show: show ? { id: show.id, title: show.title, date: show.date } : null,
+    show: show ? { id: show.id, title: show.title, date: show.date, price: show.price } : null,
     seats: b.seats,
+    status: b.status,
+    expiresAt: b.expiresAt,
+    extended: b.extended,
+    closedAt: b.closedAt,
     createdAt: b.createdAt,
     deletedAt: b.deletedAt,
   };
 }
 
 function expandUser(u) {
-  return { id: u.id, username: u.username, fullName: u.fullName, role: u.role };
+  return {
+    id: u.id,
+    username: u.username,
+    fullName: u.fullName,
+    email: u.email,
+    role: u.role,
+    spectatorId: u.spectatorId,
+    createdAt: u.createdAt,
+  };
 }
 
 const EXPANDERS = {
@@ -294,6 +339,11 @@ function searchableText(collection, item) {
     case 'spectators': {
       const card = db.cards.find((c) => c.spectatorId === item.id);
       return [item.lastName, item.firstName, item.email, card ? card.number : ''].join(' ');
+    }
+    case 'bookings': {
+      const spectator = byId('spectators', item.spectatorId);
+      const show = byId('shows', item.showId);
+      return [spectator ? fullName(spectator) : '', show ? show.title : ''].join(' ');
     }
     default: return '';
   }
@@ -320,6 +370,7 @@ function applyFilters(collection, rows, q) {
   }
 
   if (collection === 'bookings') {
+    if (q.status) result = result.filter((b) => b.status === q.status);
     if (q.showId) result = result.filter((b) => b.showId === Number(q.showId));
     if (q.spectatorId) result = result.filter((b) => b.spectatorId === Number(q.spectatorId));
   }
@@ -631,20 +682,78 @@ function currentUser(req) {
   return db.users.find((u) => u.id === payload.sub && !u.deletedAt) || null;
 }
 
-const ROLE_LEVEL = { viewer: 1, cashier: 2, admin: 3 };
+const ROLES = { viewer: 'Зритель', cashier: 'Кассир', admin: 'Администратор' };
 
-// без флага --auth пропускаем всех (ПР4); с ним проверяем роль (ПР5)
-function requireRole(res, user, minRole) {
+// кто что может. роли не вложены друг в друга: у каждой свой набор действий
+// (например, «Касса» — только у кассира)
+const ANY = ['viewer', 'cashier', 'admin'];
+const STAFF = ['cashier', 'admin'];
+const CASHIER = ['cashier'];
+const ADMIN = ['admin'];
+
+// без флага --auth пропускаем всех (ПР4); с ним проверяем роль (ПР5).
+// роль берётся из базы по подписанному токену, а не из того, что прислал клиент
+function requireRole(res, user, roles) {
   if (!AUTH) return true;
   if (!user) {
-    fail(res, 401, 'Требуется аутентификация');
+    fail(res, 401, 'Требуется вход в систему');
     return false;
   }
-  if (ROLE_LEVEL[user.role] < ROLE_LEVEL[minRole]) {
-    fail(res, 403, `Операция доступна начиная с роли «${minRole}»`);
+  if (!roles.includes(user.role)) {
+    const who = roles.map((r) => `«${ROLES[r]}»`).join(', ');
+    fail(res, 403, `Недостаточно прав: операция доступна роли ${who}`);
     return false;
   }
   return true;
+}
+
+function issueTokens(found) {
+  const now = Math.floor(Date.now() / 1000);
+  const accessToken = sign({ sub: found.id, role: found.role, type: 'access', exp: now + ACCESS_TTL });
+  const refreshToken = sign({ sub: found.id, type: 'refresh', exp: now + REFRESH_TTL });
+  db.refreshTokens.add(refreshToken);
+  return { accessToken, refreshToken, expiresIn: ACCESS_TTL, user: expandUser(found) };
+}
+
+// пароль при регистрации: не короче 8 символов, есть цифра и спецсимвол
+function passwordError(password) {
+  if (password.length < 8) return 'Пароль не короче восьми символов';
+  if (!/\d/.test(password)) return 'Пароль должен содержать цифру';
+  if (!/[^A-Za-zА-Яа-яЁё0-9]/.test(password)) return 'Пароль должен содержать спецсимвол';
+  return null;
+}
+
+function stats() {
+  const live = (rows) => rows.filter((x) => !x.deletedAt);
+  const byStatus = { active: 0, paid: 0, cancelled: 0, expired: 0 };
+  let seatsSold = 0;
+  let revenue = 0;
+  for (const b of db.bookings) {
+    byStatus[b.status] = (byStatus[b.status] || 0) + 1;
+    if (b.status === 'paid') {
+      const show = byId('shows', b.showId);
+      seatsSold += b.seats;
+      revenue += b.seats * (show ? show.price : 0);
+    }
+  }
+  const users = { viewer: 0, cashier: 0, admin: 0 };
+  for (const u of db.users) users[u.role] = (users[u.role] || 0) + 1;
+  const topShows = [...db.shows]
+    .filter((s) => !s.deletedAt)
+    .map((s) => ({ id: s.id, title: s.title, sold: s.seatsTotal - s.seatsAvailable, seatsTotal: s.seatsTotal }))
+    .sort((a, b) => b.sold - a.sold)
+    .slice(0, 5);
+  return {
+    shows: live(db.shows).length,
+    theatres: live(db.theatres).length,
+    actors: live(db.actors).length,
+    spectators: live(db.spectators).length,
+    users,
+    bookings: byStatus,
+    seatsSold,
+    revenue,
+    topShows,
+  };
 }
 
 const COLLECTIONS = ['shows', 'theatres', 'actors', 'genres', 'spectators', 'bookings'];
@@ -672,7 +781,41 @@ async function handle(req, res, url) {
     return send(res, 200, { status: 'ok', time: new Date().toISOString() });
   }
 
-  // ── аутентификация (понадобится в ПР5) ──
+  expireBookings();
+
+  // ── аутентификация ──
+  if (path === '/api/auth/register' && method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
+
+    const errors = {};
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    const email = String(body.email || '').trim();
+    const name = String(body.fullName || '').trim();
+    if (username.length < 3) errors.username = 'Логин не короче трёх символов';
+    else if (!/^[A-Za-z0-9_.-]+$/.test(username)) errors.username = 'Логин: латинские буквы, цифры, точка, дефис, подчёркивание';
+    else if (db.users.some((u) => u.username.toLowerCase() === username.toLowerCase())) errors.username = 'Такой логин уже занят';
+    const pass = passwordError(password);
+    if (pass) errors.password = pass;
+    if (!/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(email)) errors.email = 'Некорректный адрес почты';
+    if (name.length < 2) errors.fullName = 'Укажите имя';
+    if (Object.keys(errors).length) return invalid(res, errors);
+
+    // если в базе уже есть зритель с такой почтой — привязываем, и человек
+    // сразу видит свои брони
+    const spectator = db.spectators.find((s) => s.email.toLowerCase() === email.toLowerCase() && !s.deletedAt);
+    const id = push('users', {
+      username,
+      passwordHash: hash(password),
+      fullName: name,
+      email,
+      role: 'viewer',
+      spectatorId: spectator ? spectator.id : null,
+    });
+    return send(res, 201, expandUser(byId('users', id)));
+  }
+
   if (path === '/api/auth/login' && method === 'POST') {
     const body = await readBody(req);
     if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
@@ -681,13 +824,11 @@ async function handle(req, res, url) {
     if (!found || found.passwordHash !== hash(String(body.password || ''))) {
       return fail(res, 401, 'Неверный логин или пароль');
     }
-    const now = Math.floor(Date.now() / 1000);
-    const accessToken = sign({ sub: found.id, role: found.role, type: 'access', exp: now + ACCESS_TTL });
-    const refreshToken = sign({ sub: found.id, type: 'refresh', exp: now + REFRESH_TTL });
-    db.refreshTokens.add(refreshToken);
-    return send(res, 200, { accessToken, refreshToken, expiresIn: ACCESS_TTL, user: expandUser(found) });
+    return send(res, 200, issueTokens(found));
   }
 
+  // старый токен обновления сразу аннулируется, выдаётся новая пара.
+  // в ответе свежий профиль — так клиент узнаёт, если роль поменяли
   if (path === '/api/auth/refresh' && method === 'POST') {
     const body = await readBody(req);
     const token = body && body.refreshToken;
@@ -695,15 +836,11 @@ async function handle(req, res, url) {
     if (!payload || payload.type !== 'refresh' || !db.refreshTokens.has(token)) {
       return fail(res, 401, 'Токен обновления недействителен');
     }
-    const found = db.users.find((u) => u.id === payload.sub);
+    const found = db.users.find((u) => u.id === payload.sub && !u.deletedAt);
     if (!found) return fail(res, 401, 'Пользователь не найден');
 
     db.refreshTokens.delete(token);
-    const now = Math.floor(Date.now() / 1000);
-    const accessToken = sign({ sub: found.id, role: found.role, type: 'access', exp: now + ACCESS_TTL });
-    const refreshToken = sign({ sub: found.id, type: 'refresh', exp: now + REFRESH_TTL });
-    db.refreshTokens.add(refreshToken);
-    return send(res, 200, { accessToken, refreshToken, expiresIn: ACCESS_TTL, user: expandUser(found) });
+    return send(res, 200, issueTokens(found));
   }
 
   if (path === '/api/auth/me' && method === 'GET') {
@@ -717,9 +854,76 @@ async function handle(req, res, url) {
     return send(res, 204);
   }
 
+  // ── пользователи и роли (только администратор) ──
+  if (path === '/api/users' && method === 'GET') {
+    if (!requireRole(res, user, ADMIN)) return;
+    let rows = db.users.filter((u) => !u.deletedAt);
+    if (q.search) {
+      const needle = String(q.search).toLowerCase();
+      rows = rows.filter((u) => [u.username, u.fullName, u.email].join(' ').toLowerCase().includes(needle));
+    }
+    if (q.role) rows = rows.filter((u) => u.role === q.role);
+    rows = applySort('users', rows, q.sort || 'username,asc');
+    const page = paginate(rows, q);
+    return send(res, 200, { ...page, items: page.items.map(expandUser) });
+  }
+
+  let um = path.match(/^\/api\/users\/(\d+)$/);
+  if (um && (method === 'PATCH' || method === 'PUT')) {
+    if (!requireRole(res, user, ADMIN)) return;
+    const target = byId('users', um[1]);
+    if (!target || target.deletedAt) return fail(res, 404, 'Пользователь не найден');
+    const body = await readBody(req);
+    if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
+    if (!ROLES[body.role]) return invalid(res, { role: 'Неизвестная роль' });
+    if (user && target.id === user.id && body.role !== target.role) {
+      return fail(res, 409, 'Нельзя изменить собственную роль — иначе можно остаться без администратора');
+    }
+    target.role = body.role;
+    return send(res, 200, expandUser(target));
+  }
+
+  // ── статистика (только администратор) ──
+  if (path === '/api/stats' && method === 'GET') {
+    if (!requireRole(res, user, ADMIN)) return;
+    return send(res, 200, stats());
+  }
+
   // ── бронирование билетов (аналог выдачи книги) ──
+  // продлить может только сам зритель, и только свою активную бронь, один раз
+  um = path.match(/^\/api\/bookings\/(\d+)\/extend$/);
+  if (um && method === 'POST') {
+    if (!requireRole(res, user, ['viewer'])) return;
+    const b = byId('bookings', um[1]);
+    if (!b || (AUTH && b.spectatorId !== user.spectatorId)) return fail(res, 404, 'Бронирование не найдено');
+    if (b.status !== 'active') return fail(res, 409, 'Продлить можно только действующую бронь');
+    if (b.extended) return fail(res, 409, 'Бронь уже продлевали — второй раз продлить нельзя');
+    b.expiresAt = new Date(Date.parse(b.expiresAt) + HOLD_DAYS * DAY).toISOString();
+    b.extended = true;
+    return send(res, 200, expandBooking(b));
+  }
+
+  // закрыть бронь может кассир: зритель выкупил билеты или бронь отменена
+  um = path.match(/^\/api\/bookings\/(\d+)\/close$/);
+  if (um && method === 'POST') {
+    if (!requireRole(res, user, CASHIER)) return;
+    const b = byId('bookings', um[1]);
+    if (!b) return fail(res, 404, 'Бронирование не найдено');
+    const body = await readBody(req);
+    const result = body && body.result;
+    if (result !== 'paid' && result !== 'cancelled') return invalid(res, { result: 'Укажите paid или cancelled' });
+    if (b.status !== 'active') return fail(res, 409, 'Эта бронь уже закрыта');
+    b.status = result;
+    b.closedAt = new Date().toISOString();
+    if (result === 'cancelled') {
+      const show = byId('shows', b.showId);
+      if (show) show.seatsAvailable = Math.min(show.seatsTotal, show.seatsAvailable + b.seats);
+    }
+    return send(res, 200, expandBooking(b));
+  }
+
   if (path === '/api/bookings' && method === 'POST') {
-    if (!requireRole(res, user, 'cashier')) return;
+    if (!requireRole(res, user, CASHIER)) return;
     const body = await readBody(req);
     if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
 
@@ -738,7 +942,15 @@ async function handle(req, res, url) {
         : `На спектакль «${show.title}» осталось мест: ${show.seatsAvailable}, а запрошено ${seats}`);
     }
 
-    const id = push('bookings', { spectatorId: spectator.id, showId: show.id, seats });
+    const id = push('bookings', {
+      spectatorId: spectator.id,
+      showId: show.id,
+      seats,
+      status: 'active',
+      extended: false,
+      expiresAt: new Date(Date.now() + HOLD_DAYS * DAY).toISOString(),
+      closedAt: null,
+    });
     show.seatsAvailable -= seats;
     return send(res, 201, expandBooking(byId('bookings', id)));
   }
@@ -748,7 +960,7 @@ async function handle(req, res, url) {
   if (bulk && method === 'POST') {
     const collection = bulk[1];
     if (!COLLECTIONS.includes(collection) || collection === 'bookings') return fail(res, 404, 'Ресурс не найден');
-    if (!requireRole(res, user, 'cashier')) return;
+    if (!requireRole(res, user, STAFF)) return;
 
     const body = await readBody(req);
     const ids = Array.isArray(body && body.ids) ? body.ids.map(Number) : [];
@@ -780,14 +992,19 @@ async function handle(req, res, url) {
     if (!COLLECTIONS.includes(collection)) return fail(res, 404, 'Ресурс не найден');
     const expand = EXPANDERS[collection];
 
-    // брони только создаются и читаются
+    // брони создаются, продлеваются и закрываются отдельными адресами выше
     if (collection === 'bookings' && method !== 'GET') {
-      return fail(res, 405, 'Бронирования можно только создавать и просматривать');
+      return fail(res, 405, 'Бронирования нельзя изменять или удалять напрямую');
     }
+
+    // читать каталог может любой вошедший, зрителей — только сотрудники,
+    // брони — все, но зритель видит только свои
+    const readRoles = collection === 'spectators' ? STAFF : ANY;
+    const ownOnly = AUTH && collection === 'bookings' && user && user.role === 'viewer';
 
     // восстановление
     if (action === 'restore' && method === 'POST') {
-      if (!requireRole(res, user, 'admin')) return;
+      if (!requireRole(res, user, ADMIN)) return;
       const row = byId(collection, id);
       if (!row) return fail(res, 404, 'Объект не найден');
       row.deletedAt = null;
@@ -796,7 +1013,9 @@ async function handle(req, res, url) {
 
     // список
     if (id === null && method === 'GET') {
+      if (!requireRole(res, user, readRoles)) return;
       let rows = db[collection];
+      if (ownOnly) rows = rows.filter((b) => b.spectatorId === user.spectatorId);
       if (q.includeDeleted !== 'true') rows = rows.filter((x) => !x.deletedAt);
       rows = applyFilters(collection, rows, q);
       rows = applySort(collection, rows, q.sort);
@@ -806,14 +1025,15 @@ async function handle(req, res, url) {
 
     // одна запись
     if (id !== null && method === 'GET') {
+      if (!requireRole(res, user, readRoles)) return;
       const row = db[collection].find((x) => x.id === id && (q.includeDeleted === 'true' || !x.deletedAt));
-      if (!row) return fail(res, 404, 'Объект не найден');
+      if (!row || (ownOnly && row.spectatorId !== user.spectatorId)) return fail(res, 404, 'Объект не найден');
       return send(res, 200, expand(row));
     }
 
     // создание
     if (id === null && method === 'POST') {
-      if (!requireRole(res, user, 'cashier')) return;
+      if (!requireRole(res, user, STAFF)) return;
       const body = await readBody(req);
       if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
 
@@ -827,7 +1047,7 @@ async function handle(req, res, url) {
 
     // изменение
     if (id !== null && (method === 'PUT' || method === 'PATCH')) {
-      if (!requireRole(res, user, 'cashier')) return;
+      if (!requireRole(res, user, STAFF)) return;
       const row = db[collection].find((x) => x.id === id && !x.deletedAt);
       if (!row) return fail(res, 404, 'Объект не найден');
 
@@ -846,7 +1066,7 @@ async function handle(req, res, url) {
     // удаление
     if (id !== null && method === 'DELETE') {
       const hard = q.hard === 'true';
-      if (!requireRole(res, user, hard ? 'admin' : 'cashier')) return;
+      if (!requireRole(res, user, hard ? ADMIN : STAFF)) return;
 
       const index = db[collection].findIndex((x) => x.id === id);
       if (index === -1) return fail(res, 404, 'Объект не найден');
@@ -901,6 +1121,7 @@ server.listen(PORT, () => {
   console.log(`  Адрес:                http://localhost:${PORT}/api`);
   console.log(`  Разрешённый источник: ${ORIGIN}`);
   console.log(`  Проверка прав:        ${AUTH ? 'включена (--auth)' : 'выключена'}`);
+  console.log(`  Токен доступа живёт:  ${ACCESS_TTL} с`);
   console.log('');
   console.log('  Учётные записи:  admin/admin123   cashier/cashier123   viewer/viewer123');
   console.log('  Сброс данных:    POST /api/__reset');

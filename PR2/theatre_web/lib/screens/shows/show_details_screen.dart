@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format.dart';
+import '../../core/permissions.dart';
 import '../../core/router.dart';
 import '../../models/show.dart';
+import '../../state/auth_notifier.dart';
 import '../../state/catalog.dart';
 import '../../state/show_list_notifier.dart';
 import '../../widgets/details_view.dart';
@@ -18,6 +20,8 @@ class ShowDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final notifier = context.read<ShowListNotifier>();
     final catalog = context.watch<Catalog>();
+    // бронь оформляет кассир, у зрителя и админа кнопки нет
+    final canBook = context.watch<AuthNotifier>().can(canUseCashDesk);
     return DetailsView<Show>(
       title: 'Спектакль',
       backLocation: showsLocation(notifier.query),
@@ -26,18 +30,19 @@ class ShowDetailsScreen extends StatelessWidget {
       editLocation: (s) => '/shows/${s.id}/edit',
       onDelete: (s) => notifier.softDelete(s.id),
       extraActions: (s, reload) => [
-        FilledButton.tonalIcon(
-          onPressed: () async {
-            final messenger = ScaffoldMessenger.of(context);
-            if (!await showBookingDialog(context, s)) return;
-            messenger.showSnackBar(
-              const SnackBar(content: Text('Билеты забронированы')),
-            );
-            reload(); // свободных мест стало меньше
-          },
-          icon: const Icon(Icons.confirmation_number_outlined),
-          label: const Text('Забронировать'),
-        ),
+        if (canBook)
+          FilledButton.tonalIcon(
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              if (!await showBookingDialog(context, s)) return;
+              messenger.showSnackBar(
+                const SnackBar(content: Text('Билеты забронированы')),
+              );
+              reload(); // свободных мест стало меньше
+            },
+            icon: const Icon(Icons.confirmation_number_outlined),
+            label: const Text('Забронировать'),
+          ),
       ],
       fieldsOf: (s) => [
         ('Код', s.code),

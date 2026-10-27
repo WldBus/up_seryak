@@ -3,9 +3,12 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/format.dart';
+import '../../core/permissions.dart';
 import '../../core/router.dart';
+import '../../models/app_user.dart';
 import '../../models/show.dart';
 import '../../models/show_query.dart';
+import '../../state/auth_notifier.dart';
 import '../../state/catalog.dart';
 import '../../state/show_list_notifier.dart';
 import '../../widgets/debounced_field.dart';
@@ -52,22 +55,24 @@ class _ShowListScreenState extends State<ShowListScreen> {
   Widget build(BuildContext context) {
     final q = widget.query;
     final catalog = context.watch<Catalog>();
+    final role = context.select<AuthNotifier, Role?>((a) => a.role);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Спектакли'),
         actions: [
-          FilledButton.icon(
-            onPressed: () => context.go('/shows/new'),
-            icon: const Icon(Icons.add),
-            label: const Text('Добавить'),
-          ),
+          if (canEditCatalog(role))
+            FilledButton.icon(
+              onPressed: () => context.go('/shows/new'),
+              icon: const Icon(Icons.add),
+              label: const Text('Добавить'),
+            ),
           const NetworkToggle(),
           const SizedBox(width: 8),
         ],
       ),
       body: EntityListView<Show, ShowListNotifier>(
-        filters: _filters(q, catalog),
+        filters: _filters(q, catalog, role),
         sortField: q.sortField,
         sortAscending: q.sortAscending,
         hasFilters: q.hasFilters,
@@ -81,7 +86,9 @@ class _ShowListScreenState extends State<ShowListScreen> {
         onPage: (page) => _go(q.copyWith(page: page)),
         onSize: (size) => _go(q.copyWith(size: size)),
         onOpen: (s) => context.go('/shows/${s.id}'),
-        onEdit: (s) => context.go('/shows/${s.id}/edit'),
+        onEdit: canEditCatalog(role)
+            ? (s) => context.go('/shows/${s.id}/edit')
+            : null,
         titleOf: (s) => s.title,
         subtitleOf: (s) =>
             '${catalog.theatreName(s.theatreId)} · '
@@ -124,7 +131,7 @@ class _ShowListScreenState extends State<ShowListScreen> {
     );
   }
 
-  Widget _filters(ShowQuery q, Catalog catalog) {
+  Widget _filters(ShowQuery q, Catalog catalog, Role? role) {
     // Wrap, чтобы на узком окне поля переносились на новую строку
     return Wrap(
       spacing: 12,
@@ -207,11 +214,12 @@ class _ShowListScreenState extends State<ShowListScreen> {
             onChanged: (v) => _go(q.copyWith(priceTo: int.tryParse(v))),
           ),
         ),
-        FilterChip(
-          label: const Text('Показать удалённые'),
-          selected: q.includeDeleted,
-          onSelected: (v) => _go(q.copyWith(includeDeleted: v)),
-        ),
+        if (canRestore(role))
+          FilterChip(
+            label: const Text('Показать удалённые'),
+            selected: q.includeDeleted,
+            onSelected: (v) => _go(q.copyWith(includeDeleted: v)),
+          ),
         if (q.hasFilters)
           TextButton.icon(
             onPressed: () => _go(ShowQuery(size: q.size)),

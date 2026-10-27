@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
+import '../core/permissions.dart';
 import '../models/entity.dart';
+import '../state/auth_notifier.dart';
 import 'feedback.dart';
 import 'network_toggle.dart';
 
@@ -93,6 +96,12 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
   }
 
   Widget _card(BuildContext context, T item) {
+    // «Изменить» и «Удалить» только для тех, кто правит каталог
+    final canEdit = context.select<AuthNotifier, bool>(
+      (a) => a.can(canEditCatalog),
+    );
+    final editLocation = canEdit ? widget.editLocation : null;
+    final onDelete = canEdit ? widget.onDelete : null;
     final theme = Theme.of(context);
     return SingleChildScrollView(
       child: Center(
@@ -137,8 +146,8 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
                       ),
                     ),
                   if (!item.isDeleted &&
-                      (widget.editLocation != null ||
-                          widget.onDelete != null ||
+                      (editLocation != null ||
+                          onDelete != null ||
                           widget.extraActions != null))
                     Padding(
                       padding: const EdgeInsets.only(top: 16),
@@ -147,14 +156,13 @@ class _DetailsViewState<T extends Entity> extends State<DetailsView<T>> {
                         runSpacing: 12,
                         children: [
                           ...?widget.extraActions?.call(item, _reload),
-                          if (widget.editLocation != null)
+                          if (editLocation != null)
                             FilledButton.icon(
-                              onPressed: () =>
-                                  context.go(widget.editLocation!(item)),
+                              onPressed: () => context.go(editLocation(item)),
                               icon: const Icon(Icons.edit),
                               label: const Text('Изменить'),
                             ),
-                          if (widget.onDelete != null)
+                          if (onDelete != null)
                             OutlinedButton.icon(
                               onPressed: () => _delete(item),
                               icon: const Icon(Icons.delete_outline),

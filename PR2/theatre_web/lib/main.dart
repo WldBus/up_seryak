@@ -2,44 +2,94 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/api_client.dart';
 import 'core/api_test_mode.dart';
+import 'core/config.dart';
 import 'core/form_guard.dart';
 import 'core/router.dart';
 import 'repositories/actor_repository.dart';
+import 'repositories/admin_repository.dart';
 import 'repositories/api_actor_repository.dart';
 import 'repositories/api_genre_repository.dart';
 import 'repositories/api_show_repository.dart';
 import 'repositories/api_spectator_repository.dart';
 import 'repositories/api_theatre_repository.dart';
+import 'repositories/auth_api.dart';
 import 'repositories/booking_repository.dart';
 import 'repositories/genre_repository.dart';
 import 'repositories/show_repository.dart';
 import 'repositories/spectator_repository.dart';
 import 'repositories/theatre_repository.dart';
 import 'state/actor_list_notifier.dart';
+import 'state/admin_notifier.dart';
+import 'state/auth_notifier.dart';
+import 'state/bookings_notifier.dart';
 import 'state/catalog.dart';
 import 'state/genre_list_notifier.dart';
 import 'state/show_list_notifier.dart';
 import 'state/spectator_list_notifier.dart';
 import 'state/theatre_list_notifier.dart';
+import 'widgets/inactivity_watcher.dart';
 
-void main() {
+Future<void> main() async {
+  // без этого будет ошибка: ниже до runApp есть await
+  WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
 
+  // токены лежат в localStorage, поэтому сессию восстанавливаю до того,
+  // как построится интерфейс: иначе после F5 мелькнул бы экран входа
+  final prefs = await SharedPreferences.getInstance();
+  // у запросов входа свой Dio без обновления токена (см. AuthApi)
+  final auth = AuthNotifier(
+    prefs,
+    DioAuthApi(buildDio()),
+    sessionLimit: sessionLimit,
+    inactivityTimeout: inactivityTimeout,
+  );
+  await auth.restore();
+  final router = buildRouter(auth);
+
   runApp(
-    MultiProvider(
+    ChangeNotifierProvider.value(
+      value: auth,
+      child: SessionScope(router: router),
+    ),
+  );
+}
+
+/// Все провайдеры данных. Они пересоздаются, когда меняется пользователь:
+/// после выхода и входа под другим именем на экране не должно остаться
+/// чужих данных (например, броней прошлого зрителя).
+class SessionScope extends StatelessWidget {
+  final GoRouter router;
+
+  const SessionScope({super.key, required this.router});
+
+  @override
+  Widget build(BuildContext context) {
+    final userId = context.select<AuthNotifier, int?>((a) => a.user?.id);
+    final auth = context.read<AuthNotifier>();
+
+    return MultiProvider(
+      key: ValueKey(userId),
       providers: [
         ChangeNotifierProvider(create: (_) => ApiTestMode()),
+        // токен подставляется в каждый запрос, а при 401 Dio сам
+        // обновит его через auth.refreshTokens и повторит запрос
         Provider<Dio>(
-          create: (context) => buildDio(testMode: context.read<ApiTestMode>()),
+          create: (context) => buildDio(
+            testMode: context.read<ApiTestMode>(),
+            tokenProvider: () => auth.accessToken,
+            onUnauthorized: auth.refreshTokens,
+          ),
         ),
         Provider(create: (_) => FormGuard()),
-        // Единственное место, где поменялась реализация: было
-        // Persistent…Repository (localStorage), стало Api…Repository.
-        // Экраны и формы получают те же интерфейсы и про сервер не знают
+        // Единственное место, где меняется реализация (ПР4): репозитории
+        // строятся из Dio, экраны получают те же интерфейсы
         ProxyProvider<Dio, ShowRepository>(
           update: (_, dio, _) => ApiShowRepository(dio),
         ),
@@ -57,6 +107,9 @@ void main() {
         ),
         ProxyProvider<Dio, BookingRepository>(
           update: (_, dio, _) => ApiBookingRepository(dio),
+        ),
+        ProxyProvider<Dio, AdminRepository>(
+          update: (_, dio, _) => ApiAdminRepository(dio),
         ),
         ChangeNotifierProvider(
           create: (context) => Catalog(
@@ -97,14 +150,23 @@ void main() {
           create: (context) =>
               SpectatorListNotifier(context.read<SpectatorRepository>()),
         ),
+        ChangeNotifierProvider(
+          create: (context) =>
+              BookingsNotifier(context.read<BookingRepository>()),
+        ),
+        ChangeNotifierProvider(
+          create: (context) => AdminNotifier(context.read<AdminRepository>()),
+        ),
       ],
-      child: const TheatreApp(),
-    ),
-  );
+      child: TheatreApp(router: router),
+    );
+  }
 }
 
 class TheatreApp extends StatelessWidget {
-  const TheatreApp({super.key});
+  final GoRouter router;
+
+  const TheatreApp({super.key, required this.router});
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +186,8 @@ class TheatreApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       routerConfig: router,
+      // следит за неактивностью над всеми экранами, пока человек в системе
+      builder: (context, child) => InactivityWatcher(child: child!),
     );
   }
 }

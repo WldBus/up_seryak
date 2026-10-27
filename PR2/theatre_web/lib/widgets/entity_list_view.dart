@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/breakpoints.dart';
+import '../core/permissions.dart';
+import '../models/app_user.dart';
 import '../models/entity.dart';
 import '../models/page_result.dart';
+import '../state/auth_notifier.dart';
 import '../state/entity_list_notifier.dart';
 import '../state/list_state.dart';
 import 'entity_table.dart';
@@ -51,6 +54,9 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
   @override
   Widget build(BuildContext context) {
     final notifier = context.watch<N>();
+    // кнопки удаления и выбор строк показываю только тем, кому их разрешено
+    // нажимать. это удобство, а не защита: сервер всё равно проверит роль
+    final role = context.select<AuthNotifier, Role?>((a) => a.role);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -66,7 +72,8 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
           )
         else
           Padding(padding: const EdgeInsets.all(12), child: filters),
-        if (notifier.hasSelection) _SelectionBar<T, N>(),
+        if (notifier.hasSelection && canEditCatalog(role))
+          _SelectionBar<T, N>(),
         const Divider(height: 1),
         Expanded(
           child: switch (notifier.state) {
@@ -81,7 +88,12 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
               onReset: onResetFilters,
               onFirstPage: () => onPage(1),
             ),
-            ListLoaded(page: final p) => _buildItems(context, notifier, p),
+            ListLoaded(page: final p) => _buildItems(
+              context,
+              notifier,
+              p,
+              role,
+            ),
           },
         ),
         if (notifier.state case ListLoaded(page: final p) when p.total > 0) ...[
@@ -92,7 +104,14 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
     );
   }
 
-  Widget _buildItems(BuildContext context, N notifier, PageResult<T> page) {
+  Widget _buildItems(
+    BuildContext context,
+    N notifier,
+    PageResult<T> page,
+    Role? role,
+  ) {
+    final canSelect = canEditCatalog(role);
+    final hasActions = canSelect || onEdit != null;
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < tableBreakpoint) {
@@ -100,7 +119,7 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
             padding: const EdgeInsets.all(8),
             itemCount: page.items.length,
             itemBuilder: (context, i) =>
-                _card(context, notifier, page.items[i]),
+                _card(context, notifier, page.items[i], role),
           );
         }
         return EntityTable<T>(
@@ -108,28 +127,33 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
           items: page.items,
           idOf: (e) => e.id,
           selected: notifier.selected,
-          onToggleSelect: notifier.toggleSelection,
-          onSelectAll: notifier.selectPage,
+          onToggleSelect: canSelect ? notifier.toggleSelection : null,
+          onSelectAll: canSelect ? notifier.selectPage : null,
           isDisabled: (e) => e.isDeleted,
           onOpen: onOpen,
           sortField: sortField,
           sortAscending: sortAscending,
           onSort: onSort,
-          actions: (e) => _actions(context, e),
+          actions: hasActions ? (e) => _actions(context, e, role) : null,
         );
       },
     );
   }
 
-  Widget _card(BuildContext context, N notifier, T item) {
+  Widget _card(BuildContext context, N notifier, T item, Role? role) {
     final deleted = item.isDeleted;
+    final canSelect = canEditCatalog(role);
     return Card(
       child: ListTile(
         onTap: () => onOpen(item),
-        leading: Checkbox(
-          value: notifier.selected.contains(item.id),
-          onChanged: deleted ? null : (_) => notifier.toggleSelection(item.id),
-        ),
+        leading: canSelect
+            ? Checkbox(
+                value: notifier.selected.contains(item.id),
+                onChanged: deleted
+                    ? null
+                    : (_) => notifier.toggleSelection(item.id),
+              )
+            : null,
         title: Text(
           titleOf(item),
           style: deleted
@@ -139,7 +163,9 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
         subtitle: Text(
           deleted ? 'Удалено · ${subtitleOf(item)}' : subtitleOf(item),
         ),
-        trailing: _menu(context, item),
+        trailing: canSelect || onEdit != null
+            ? _menu(context, item, role)
+            : null,
       ),
     );
   }
@@ -172,7 +198,7 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
   }
 
   /// кнопки в строке таблицы
-  List<Widget> _actions(BuildContext context, T item) {
+  List<Widget> _actions(BuildContext context, T item, Role? role) {
     return [
       if (onEdit != null && !item.isDeleted)
         IconButton(
@@ -180,28 +206,29 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
           icon: const Icon(Icons.edit_outlined),
           onPressed: () => onEdit!(item),
         ),
-      if (item.isDeleted)
+      if (item.isDeleted && canRestore(role))
         IconButton(
           tooltip: 'Восстановить',
           icon: const Icon(Icons.restore_from_trash),
           onPressed: () => _restore(context, item),
         )
-      else
+      else if (!item.isDeleted && canEditCatalog(role))
         IconButton(
           tooltip: 'Удалить (в корзину)',
           icon: const Icon(Icons.delete_outline),
           onPressed: () => _softDelete(context, item),
         ),
-      IconButton(
-        tooltip: 'Удалить навсегда',
-        icon: const Icon(Icons.delete_forever),
-        onPressed: () => _hardDelete(context, item),
-      ),
+      if (canHardDelete(role))
+        IconButton(
+          tooltip: 'Удалить навсегда',
+          icon: const Icon(Icons.delete_forever),
+          onPressed: () => _hardDelete(context, item),
+        ),
     ];
   }
 
   /// на карточке мало места, поэтому кнопки убрал в меню
-  Widget _menu(BuildContext context, T item) {
+  Widget _menu(BuildContext context, T item, Role? role) {
     return PopupMenuButton<void Function()>(
       tooltip: 'Действия',
       onSelected: (action) => action(),
@@ -211,20 +238,21 @@ class EntityListView<T extends Entity, N extends EntityListNotifier<T, Object?>>
             value: () => onEdit!(item),
             child: const Text('Изменить'),
           ),
-        if (item.isDeleted)
+        if (item.isDeleted && canRestore(role))
           PopupMenuItem(
             value: () => _restore(context, item),
             child: const Text('Восстановить'),
           )
-        else
+        else if (!item.isDeleted && canEditCatalog(role))
           PopupMenuItem(
             value: () => _softDelete(context, item),
             child: const Text('Удалить'),
           ),
-        PopupMenuItem(
-          value: () => _hardDelete(context, item),
-          child: const Text('Удалить навсегда'),
-        ),
+        if (canHardDelete(role))
+          PopupMenuItem(
+            value: () => _hardDelete(context, item),
+            child: const Text('Удалить навсегда'),
+          ),
       ],
     );
   }

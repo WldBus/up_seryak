@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../core/permissions.dart';
 import '../core/router.dart';
+import '../models/app_user.dart';
 import '../models/entity.dart';
 import '../models/list_query.dart';
+import '../state/auth_notifier.dart';
 import '../state/entity_list_notifier.dart';
 import 'debounced_field.dart';
 import 'entity_list_view.dart';
@@ -77,16 +80,18 @@ class _SimpleListScreenState<
   Widget build(BuildContext context) {
     final q = widget.query;
     final path = widget.path;
+    final role = context.select<AuthNotifier, Role?>((a) => a.role);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         actions: [
-          FilledButton.icon(
-            onPressed: () => context.go('$path/new'),
-            icon: const Icon(Icons.add),
-            label: const Text('Добавить'),
-          ),
+          if (canEditCatalog(role))
+            FilledButton.icon(
+              onPressed: () => context.go('$path/new'),
+              icon: const Icon(Icons.add),
+              label: const Text('Добавить'),
+            ),
           const NetworkToggle(),
           const SizedBox(width: 8),
         ],
@@ -106,11 +111,13 @@ class _SimpleListScreenState<
                 onChanged: (v) => _go(q.copyWith(search: v)),
               ),
             ),
-            FilterChip(
-              label: const Text('Показать удалённые'),
-              selected: q.includeDeleted,
-              onSelected: (v) => _go(q.copyWith(includeDeleted: v)),
-            ),
+            // удалённые видит только админ — только он может их восстановить
+            if (canRestore(role))
+              FilterChip(
+                label: const Text('Показать удалённые'),
+                selected: q.includeDeleted,
+                onSelected: (v) => _go(q.copyWith(includeDeleted: v)),
+              ),
             if (q.hasFilters)
               TextButton.icon(
                 onPressed: () => _go(q.reset()),
@@ -132,7 +139,9 @@ class _SimpleListScreenState<
         onPage: (page) => _go(q.copyWith(page: page)),
         onSize: (size) => _go(q.copyWith(size: size)),
         onOpen: (e) => context.go('$path/${e.id}'),
-        onEdit: (e) => context.go('$path/${e.id}/edit'),
+        onEdit: canEditCatalog(role)
+            ? (e) => context.go('$path/${e.id}/edit')
+            : null,
         titleOf: widget.titleOf,
         subtitleOf: widget.subtitleOf,
         columns: widget.columns,
