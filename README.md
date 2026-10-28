@@ -58,12 +58,22 @@ cp build/web/index.html build/web/404.html
 (один раз включить: Settings → Pages → Source → GitHub Actions).
 Адрес: https://wldbus.github.io/up_seryak/
 
-Сервер остаётся локальным. Чтобы опубликованный сайт его видел, в `--origin`
-добавляется адрес Pages (источников можно несколько через запятую):
+### Сервер на Render
 
-```bash
-node theatre-server.js --port 8080 --auth --origin http://localhost:5555,http://localhost:8000,https://wldbus.github.io
-```
+Опубликованный сайт берёт данные с сервера на Render, а не с моего компьютера:
+https://theatre-api.onrender.com/api (проверка — `/api/__health`).
 
-Chrome разрешает странице с HTTPS обращаться к `http://localhost` (это не считается
-смешанным содержимым), но может один раз спросить разрешение на доступ к локальной сети.
+Как подключено (Render → New → Web Service, репозиторий `up_seryak`):
+
+- Root Directory: `api`, Runtime: Node, Build Command: `npm install`, Start Command: `npm start`, тариф Free;
+- `npm start` (см. `api/package.json`) запускает сервер с `--auth` и списком
+  источников для CORS, порт Render передаёт сам в переменной `PORT`;
+- в GitHub: Settings → Secrets and variables → Actions → Variables →
+  `API_BASE_URL` = `https://theatre-api.onrender.com/api`, после этого Actions собирает сайт уже с этим адресом.
+
+Бесплатный сервер засыпает через 15 минут без запросов: первый запрос после
+этого ждёт около минуты. Данные хранятся в памяти, поэтому после засыпания или
+перезапуска возвращаются к начальным.
+
+Локально сервер запускается как раньше (команда в разделе «Запуск»), а сборка
+без переменной `API_BASE_URL` обращается к `http://localhost:8080/api`.

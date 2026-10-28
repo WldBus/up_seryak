@@ -1,0 +1,13 @@
+{
+  "name": "theatre-server",
+  "version": "1.0.0",
+  "description": "Учебный сервер API «Театральная касса» (ПР4–ПР6)",
+  "private": true,
+  "main": "theatre-server.js",
+  "scripts": {
+    "start": "node theatre-server.js --auth --origin https://wldbus.github.io,http://localhost:5555,http://localhost:8000"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

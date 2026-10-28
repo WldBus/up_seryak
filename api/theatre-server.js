@@ -14,6 +14,9 @@
  * локальная релизная сборка и сайт на GitHub Pages):
  *   --origin http://localhost:5555,http://localhost:8000,https://wldbus.github.io
  *
+ * На Render сервер запускается командой npm start (см. package.json),
+ * порт хостинг передаёт сам через переменную окружения PORT.
+ *
  * Без --auth права не проверяются (так было в ПР4). В ПР5 сервер запускается
  * с --auth: вход по токену и права по ролям «Зритель», «Кассир», «Администратор».
  * Срок жизни токена доступа задаётся --ttl в секундах (по умолчанию 900).
@@ -39,7 +42,8 @@ function arg(name, fallback) {
   return i !== -1 && args[i + 1] ? args[i + 1] : fallback;
 }
 
-const PORT = Number(arg('port', 8080));
+// на Render порт не выбираешь: хостинг сам передаёт его в переменной PORT
+const PORT = Number(arg('port', process.env.PORT || 8080));
 const ORIGIN = arg('origin', '*');
 const ORIGINS = ORIGIN.split(',').map((o) => o.trim()).filter(Boolean);
 const AUTH = args.includes('--auth');
