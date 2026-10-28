@@ -21,8 +21,11 @@
  * с --auth: вход по токену и права по ролям «Зритель», «Кассир», «Администратор».
  * Срок жизни токена доступа задаётся --ttl в секундах (по умолчанию 900).
  *
- * Данные хранятся в памяти и сбрасываются при перезапуске
- * либо запросом POST /api/__reset
+ * Без переменной окружения DATABASE_URL данные хранятся в памяти и
+ * сбрасываются при перезапуске либо запросом POST /api/__reset.
+ * С DATABASE_URL (строка подключения к PostgreSQL в Supabase) данные лежат
+ * в базе: схема — db/schema.sql, чтение и запись — storage.js.
+ * Для базы нужен пакет pg: npm install
  *
  * Учебные возможности:
  *   ?__delay=1500   задержка ответа в миллисекундах (проверка индикатора загрузки)
@@ -655,7 +658,14 @@ function cors(res) {
   res.setHeader('Vary', 'Origin');
 }
 
+// ответ не отправляю сразу, а запоминаю: сначала изменения должны
+// сохраниться в базу, и только потом клиент узнаёт, что всё получилось
 function send(res, status, payload) {
+  res.result = { status, payload };
+}
+
+function writeResult(res) {
+  const { status, payload } = res.result || { status: 404, payload: { message: 'Адрес не обслуживается' } };
   cors(res);
   if (payload === undefined || status === 204) {
     res.writeHead(204);
@@ -793,7 +803,11 @@ async function handle(req, res, url) {
   }
 
   if (path === '/api/__health' && method === 'GET') {
-    return send(res, 200, { status: 'ok', time: new Date().toISOString() });
+    return send(res, 200, {
+      status: 'ok',
+      time: new Date().toISOString(),
+      storage: storage ? 'postgres' : 'memory',
+    });
   }
 
   expireBookings();
@@ -1104,7 +1118,20 @@ async function handle(req, res, url) {
 
 // ─────────────────────────────── запуск ───────────────────────────────
 
-seed();
+// pg подключаю только для базы: без DATABASE_URL сервер, как в ПР4–ПР6,
+// запускается без npm install
+const storage = process.env.DATABASE_URL
+  ? require('./storage').createStorage(process.env.DATABASE_URL)
+  : null;
+
+// запросы выполняются строго по одному: загрузил из базы → обработал →
+// сохранил. иначе два одновременных запроса затёрли бы изменения друг друга
+let queue = Promise.resolve();
+function exclusive(work) {
+  const run = queue.then(work);
+  queue = run.catch(() => {});
+  return run;
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -1126,19 +1153,46 @@ const server = http.createServer(async (req, res) => {
   if (delay > 0) await new Promise((r) => setTimeout(r, Math.min(delay, 10000)));
 
   const started = Date.now();
-  try {
-    await handle(req, res, url);
-  } catch (err) {
-    console.error(err);
-    if (!res.headersSent) fail(res, 500, 'Внутренняя ошибка сервера: ' + err.message);
-  }
+  await exclusive(async () => {
+    try {
+      if (storage) db = await storage.load();
+      await handle(req, res, url);
+      if (storage) await storage.save(db);
+    } catch (err) {
+      // если база не приняла изменения, в памяти они тоже не останутся:
+      // следующий запрос снова загрузит данные из базы
+      console.error(err);
+      fail(res, 500, 'Внутренняя ошибка сервера: ' + err.message);
+    }
+  });
+  writeResult(res);
   console.log(`${req.method.padEnd(6)} ${url.pathname}${url.search}  → ${res.statusCode}  ${Date.now() - started} мс`);
 });
 
-server.listen(PORT, () => {
+async function start() {
+  if (storage) {
+    db = await storage.load();
+    // база пустая (таблицы созданы без данных) — заполняю начальными данными
+    if (!db.theatres.length && !db.users.length) {
+      seed();
+      await storage.save(db);
+    }
+  } else {
+    seed();
+  }
+  server.listen(PORT, printBanner);
+}
+
+start().catch((err) => {
+  console.error('Не удалось подключиться к базе данных:', err.message);
+  process.exit(1);
+});
+
+function printBanner() {
   console.log('');
   console.log('  API «Театральная касса»');
   console.log(`  Адрес:                http://localhost:${PORT}/api`);
+  console.log(`  Данные:               ${storage ? 'PostgreSQL (DATABASE_URL)' : 'в памяти'}`);
   console.log(`  Разрешённые источники: ${ORIGINS.join(', ')}`);
   console.log(`  Проверка прав:        ${AUTH ? 'включена (--auth)' : 'выключена'}`);
   console.log(`  Токен доступа живёт:  ${ACCESS_TTL} с`);
@@ -1148,4 +1202,4 @@ server.listen(PORT, () => {
   console.log('  Задержка ответа: любой запрос с ?__delay=1500');
   console.log('  Ошибка по требованию: любой запрос с ?__fail=500');
   console.log('');
-});
+}
