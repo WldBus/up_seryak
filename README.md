@@ -61,7 +61,7 @@ cp build/web/index.html build/web/404.html
 ### Сервер на Render
 
 Опубликованный сайт берёт данные с сервера на Render, а не с моего компьютера:
-https://theatre-api.onrender.com/api (проверка — `/api/__health`).
+https://theatre-api-ncpk.onrender.com/api (проверка — `/api/__health`).
 
 Как подключено (Render → New → Web Service, репозиторий `up_seryak`):
 
@@ -69,7 +69,7 @@ https://theatre-api.onrender.com/api (проверка — `/api/__health`).
 - `npm start` (см. `api/package.json`) запускает сервер с `--auth` и списком
   источников для CORS, порт Render передаёт сам в переменной `PORT`;
 - в GitHub: Settings → Secrets and variables → Actions → Variables →
-  `API_BASE_URL` = `https://theatre-api.onrender.com/api`, после этого Actions собирает сайт уже с этим адресом.
+  `API_BASE_URL` = `https://theatre-api-ncpk.onrender.com/api`, после этого Actions собирает сайт уже с этим адресом.
 
 Бесплатный сервер засыпает через 15 минут без запросов: первый запрос после
 этого ждёт около минуты. Данные хранятся в памяти, поэтому после засыпания или
